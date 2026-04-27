@@ -1,0 +1,419 @@
+import { useMemo, useState } from "react";
+import Plot from "react-plotly.js";
+
+const PERIOD_COLORS = ["#00d4ff", "#00ffa3", "#f59e0b", "#f97316", "#ef4444", "#a855f7", "#ec4899"];
+
+export default function IdfChartPanel({ idfData, isLoading, theme = "dark" }) {
+  const [activeView, setActiveView] = useState("curve");
+  const chartData = idfData?.rows || [];
+  const returnPeriods = idfData?.returnPeriods || [];
+  const hasData = chartData.length > 0 && returnPeriods.length > 0;
+  const rainfallSeries = idfData?.fullSeries || { time: [], obs: [], model: [], corrected: [] };
+  const rainfallData = useMemo(
+    () => {
+      const toFiniteOrNull = (value) => {
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) ? numericValue : null;
+      };
+
+      return rainfallSeries.time.map((timeValue, index) => ({
+        time: timeValue,
+        obs: toFiniteOrNull(rainfallSeries.obs?.[index]),
+        model: toFiniteOrNull(rainfallSeries.model?.[index]),
+        corrected: toFiniteOrNull(rainfallSeries.corrected?.[index])
+      }));
+    },
+    [rainfallSeries]
+  );
+  const hasRainfallData = rainfallData.length > 0;
+  const modelText = idfData?.metadata?.model ? `Model: ${idfData.metadata.model}` : "Advanced Results";
+  const scenarioText = idfData?.metadata?.scenario || "historical";
+  const hasModelSeries = rainfallData.some((row) => row.model !== null);
+  const hasCorrectedSeries = rainfallData.some((row) => row.corrected !== null);
+  const hasObservedSeries = rainfallData.some((row) => row.obs !== null);
+  const shouldSplitHistoricalModelView =
+    Boolean(idfData?.metadata?.model) && scenarioText === "historical" && hasObservedSeries && hasModelSeries && hasCorrectedSeries;
+  const isLightMode = theme === "light";
+  const axisColor = isLightMode ? "rgba(15, 23, 42, 0.72)" : "rgba(255, 255, 255, 0.6)";
+  const gridColor = isLightMode ? "rgba(30, 41, 59, 0.15)" : "rgba(0, 212, 255, 0.12)";
+  const legendBackground = isLightMode ? "rgba(255, 255, 255, 0.9)" : "rgba(15, 23, 42, 0.86)";
+  const buildRainfallLayout = (title) => ({
+      title: {
+        text: title,
+        x: 0.01,
+        xanchor: "left",
+        font: { size: 16, color: isLightMode ? "#0f172a" : "#f8fafc" }
+      },
+      xaxis: {
+        title: { text: "Date", font: { color: axisColor } },
+        tickfont: { color: axisColor },
+        showgrid: true,
+        gridcolor: gridColor
+      },
+      yaxis: {
+        title: { text: "Rainfall (mm/day)", font: { color: axisColor } },
+        tickfont: { color: axisColor },
+        showgrid: true,
+        gridcolor: gridColor,
+        zeroline: false
+      },
+      legend: {
+        orientation: "h",
+        y: 1.15,
+        x: 0,
+        font: { color: axisColor },
+        bgcolor: legendBackground,
+        bordercolor: isLightMode ? "rgba(14, 116, 144, 0.25)" : "rgba(148, 163, 184, 0.25)",
+        borderwidth: 1
+      },
+      hoverlabel: {
+        bgcolor: isLightMode ? "rgba(255,255,255,0.98)" : "rgba(15,23,42,0.98)",
+        font: { color: isLightMode ? "#0f172a" : "#f8fafc" },
+        bordercolor: isLightMode ? "rgba(14,116,144,0.3)" : "rgba(148,163,184,0.35)"
+      },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      margin: { l: 70, r: 24, t: 70, b: 62 },
+      hovermode: "closest"
+    });
+  const rainfallPlotData = useMemo(() => {
+    const observedValues = rainfallData.map((row) => row.obs);
+    const modelValues = rainfallData.map((row) => row.model);
+    const correctedValues = rainfallData.map((row) => row.corrected);
+    const timeValues = rainfallData.map((row) => row.time);
+    const traces = [];
+
+    if (hasObservedSeries) {
+      traces.push({
+        x: timeValues,
+        y: observedValues,
+        type: "scatter",
+        mode: "lines",
+        name: "Observed Rainfall (IMD)",
+        line: { color: "#22d3ee", width: 2.5 },
+        hovertemplate: "Date: %{x}<br>Observed: %{y:.2f} mm/day<extra></extra>",
+        connectgaps: true
+      });
+    }
+
+    if (hasCorrectedSeries) {
+      traces.push({
+        x: timeValues,
+        y: correctedValues,
+        type: "scatter",
+        mode: "lines",
+        name: "Bias-Corrected Rainfall",
+        line: { color: "#a855f7", width: 2.2 },
+        hovertemplate: "Date: %{x}<br>Corrected: %{y:.2f} mm/day<extra></extra>",
+        connectgaps: true
+      });
+    }
+
+    if (hasModelSeries) {
+      traces.push({
+        x: timeValues,
+        y: modelValues,
+        type: "scatter",
+        mode: "lines",
+        name: "Model Rainfall",
+        line: { color: "#f59e0b", width: 2.2 },
+        hovertemplate: "Date: %{x}<br>Model: %{y:.2f} mm/day<extra></extra>",
+        connectgaps: true
+      });
+    }
+
+    return traces;
+  }, [hasCorrectedSeries, hasModelSeries, hasObservedSeries, rainfallData]);
+  const historicalModelPlotData = useMemo(() => {
+    const timeValues = rainfallData.map((row) => row.time);
+    return {
+      imdVsModel: [
+        {
+          x: timeValues,
+          y: rainfallData.map((row) => row.obs),
+          type: "scatter",
+          mode: "lines",
+          name: "Observed Rainfall (IMD)",
+          line: { color: "#22d3ee", width: 2.5 },
+          hovertemplate: "Date: %{x}<br>Observed: %{y:.2f} mm/day<extra></extra>",
+          connectgaps: true
+        },
+        {
+          x: timeValues,
+          y: rainfallData.map((row) => row.model),
+          type: "scatter",
+          mode: "lines",
+          name: "Historical Model Rainfall",
+          line: { color: "#f59e0b", width: 2.2 },
+          hovertemplate: "Date: %{x}<br>Model: %{y:.2f} mm/day<extra></extra>",
+          connectgaps: true
+        }
+      ],
+      imdVsCorrected: [
+        {
+          x: timeValues,
+          y: rainfallData.map((row) => row.obs),
+          type: "scatter",
+          mode: "lines",
+          name: "Observed Rainfall (IMD)",
+          line: { color: "#22d3ee", width: 2.5 },
+          hovertemplate: "Date: %{x}<br>Observed: %{y:.2f} mm/day<extra></extra>",
+          connectgaps: true
+        },
+        {
+          x: timeValues,
+          y: rainfallData.map((row) => row.corrected),
+          type: "scatter",
+          mode: "lines",
+          name: "Bias-Corrected Model Rainfall",
+          line: { color: "#a855f7", width: 2.2 },
+          hovertemplate: "Date: %{x}<br>Corrected: %{y:.2f} mm/day<extra></extra>",
+          connectgaps: true
+        }
+      ]
+    };
+  }, [rainfallData]);
+  const rainfallPlotLayout = useMemo(
+    () => buildRainfallLayout("Daily Rainfall Time Series"),
+    [axisColor, gridColor, isLightMode]
+  );
+  const splitPlotLayouts = useMemo(
+    () => ({
+      imdVsModel: buildRainfallLayout("Observed IMD vs Historical Model Rainfall"),
+      imdVsCorrected: buildRainfallLayout("Observed IMD vs Bias-Corrected Model Rainfall")
+    }),
+    [axisColor, gridColor, isLightMode]
+  );
+  const idfPlotData = useMemo(
+    () =>
+      returnPeriods.map((period, index) => ({
+        x: chartData.map((row) => row.duration),
+        y: chartData.map((row) => row[String(period)]),
+        type: "scatter",
+        mode: "lines+markers",
+        name: `${period} Year Return Period`,
+        line: {
+          color: PERIOD_COLORS[index % PERIOD_COLORS.length],
+          width: 2.4
+        },
+        marker: {
+          size: 5
+        },
+        hovertemplate:
+          "Duration: %{x} hr<br>Intensity: %{y:.2f} mm/hr<br>Return Period: " +
+          `${period} year<extra></extra>`,
+        connectgaps: true
+      })),
+    [chartData, returnPeriods]
+  );
+  const idfPlotLayout = useMemo(
+    () => ({
+      title: {
+        text: "IDF Curve by Return Period",
+        x: 0.01,
+        xanchor: "left",
+        font: { size: 16, color: isLightMode ? "#0f172a" : "#f8fafc" }
+      },
+      xaxis: {
+        title: { text: "Duration (hours)", font: { color: axisColor } },
+        tickfont: { color: axisColor },
+        showgrid: true,
+        gridcolor: gridColor
+      },
+      yaxis: {
+        title: { text: "Intensity (mm/hr)", font: { color: axisColor } },
+        tickfont: { color: axisColor },
+        showgrid: true,
+        gridcolor: gridColor,
+        zeroline: false
+      },
+      legend: {
+        orientation: "h",
+        y: 1.15,
+        x: 0,
+        font: { color: axisColor },
+        bgcolor: legendBackground,
+        bordercolor: isLightMode ? "rgba(14, 116, 144, 0.25)" : "rgba(148, 163, 184, 0.25)",
+        borderwidth: 1
+      },
+      hoverlabel: {
+        bgcolor: isLightMode ? "rgba(255,255,255,0.98)" : "rgba(15,23,42,0.98)",
+        font: { color: isLightMode ? "#0f172a" : "#f8fafc" },
+        bordercolor: isLightMode ? "rgba(14,116,144,0.3)" : "rgba(148,163,184,0.35)"
+      },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      margin: { l: 70, r: 24, t: 70, b: 62 },
+      hovermode: "closest"
+    }),
+    [axisColor, gridColor, isLightMode, legendBackground]
+  );
+  const rainfallCsv = useMemo(() => {
+    if (!hasRainfallData) {
+      return "";
+    }
+
+    const header = ["date", "observed_imd", "model", "bias_corrected"];
+    const rows = rainfallData.map((row) => [
+      row.time ?? "",
+      row.obs ?? "",
+      row.model ?? "",
+      row.corrected ?? ""
+    ]);
+    return [header, ...rows].map((parts) => parts.join(",")).join("\n");
+  }, [hasRainfallData, rainfallData]);
+  function handleDownloadRainfallCsv() {
+    if (!rainfallCsv) {
+      return;
+    }
+
+    const blob = new Blob([rainfallCsv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rainfall-series-${idfData?.metadata?.model || "imd"}-${scenarioText}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+  const formattedRows = useMemo(
+    () =>
+      chartData.map((row) => ({
+        ...row,
+        ...Object.fromEntries(
+          returnPeriods.map((period) => [String(period), Number(row[String(period)]).toFixed(2)])
+        )
+      })),
+    [chartData, returnPeriods]
+  );
+
+  return (
+    <section className="card">
+      <div className="result-toolbar">
+        <button
+          type="button"
+          className={`result-pill ${activeView === "curve" ? "active" : ""}`}
+          onClick={() => setActiveView("curve")}
+        >
+          📊 Curve View
+        </button>
+        <button
+          type="button"
+          className={`result-pill ${activeView === "table" ? "active" : ""}`}
+          onClick={() => setActiveView("table")}
+        >
+          📋 Table View
+        </button>
+        <button
+          type="button"
+          className={`result-pill ${activeView === "rainfall" ? "active" : ""}`}
+          onClick={() => setActiveView("rainfall")}
+        >
+          🌧️ Rainfall View
+        </button>
+        {activeView === "rainfall" && hasRainfallData ? (
+          <button type="button" className="download-btn" onClick={handleDownloadRainfallCsv}>
+            ⬇ Download CSV
+          </button>
+        ) : null}
+        <div className="result-spacer" />
+        <div className="result-meta">{modelText}</div>
+      </div>
+
+      {isLoading ? (
+        <div className="state-box">✨ Generating your IDF curve with advanced climate models...</div>
+      ) : hasData && activeView === "curve" ? (
+        <div className="chart-wrap">
+          <Plot
+            data={idfPlotData}
+            layout={idfPlotLayout}
+            config={{
+              responsive: true,
+              displaylogo: false,
+              scrollZoom: true,
+              modeBarButtonsToRemove: ["lasso2d", "select2d"]
+            }}
+            style={{ width: "100%", height: "100%" }}
+            useResizeHandler
+          />
+        </div>
+      ) : hasData && activeView === "table" ? (
+        <div className="idf-table-wrap">
+          <table className="idf-table">
+            <thead>
+              <tr>
+                <th>Duration (hr)</th>
+                {returnPeriods.map((period) => (
+                  <th key={period}>{period} Year</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {formattedRows.map((row) => (
+                <tr key={row.duration}>
+                  <td>{row.duration}</td>
+                  {returnPeriods.map((period) => (
+                    <td key={`${row.duration}-${period}`}>{row[String(period)]}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : activeView === "rainfall" && hasRainfallData ? (
+        <div className={shouldSplitHistoricalModelView ? "split-rainfall-wrap" : "chart-wrap"}>
+          {shouldSplitHistoricalModelView ? (
+            <>
+              <div className="chart-wrap rainfall-subplot">
+                <Plot
+                  data={historicalModelPlotData.imdVsModel}
+                  layout={splitPlotLayouts.imdVsModel}
+                  config={{
+                    responsive: true,
+                    displaylogo: false,
+                    scrollZoom: true,
+                    modeBarButtonsToRemove: ["lasso2d", "select2d"]
+                  }}
+                  style={{ width: "100%", height: "100%" }}
+                  useResizeHandler
+                />
+              </div>
+              <div className="chart-wrap rainfall-subplot">
+                <Plot
+                  data={historicalModelPlotData.imdVsCorrected}
+                  layout={splitPlotLayouts.imdVsCorrected}
+                  config={{
+                    responsive: true,
+                    displaylogo: false,
+                    scrollZoom: true,
+                    modeBarButtonsToRemove: ["lasso2d", "select2d"]
+                  }}
+                  style={{ width: "100%", height: "100%" }}
+                  useResizeHandler
+                />
+              </div>
+            </>
+          ) : (
+            <Plot
+              data={rainfallPlotData}
+              layout={rainfallPlotLayout}
+              config={{
+                responsive: true,
+                displaylogo: false,
+                scrollZoom: true,
+                modeBarButtonsToRemove: ["lasso2d", "select2d"]
+              }}
+              style={{ width: "100%", height: "100%" }}
+              useResizeHandler
+            />
+          )}
+        </div>
+      ) : (
+        <div className="state-box">
+          Select a location and run analysis to render the IDF curve.
+        </div>
+      )}
+    </section>
+  );
+}
