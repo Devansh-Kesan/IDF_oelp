@@ -78,7 +78,17 @@ export async function generateIdfCurve(payload) {
 }
 
 export async function generateShapeIdfCurve(payload) {
-  const raw = await request("/getIdfCurveForShape", {
+  const isObservedModel = payload.model === "imd" || payload.model === "imdaa";
+  const isFutureScenario = payload.scenerio !== "historical";
+
+  let endpoint = "/getIdfCurve_historic_Shape";
+  if (isObservedModel) {
+    endpoint = "/getIdfCurve_observed_Shape";
+  } else if (isFutureScenario) {
+    endpoint = "/getIdfCurve_future_Shape";
+  }
+
+  const raw = await request(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

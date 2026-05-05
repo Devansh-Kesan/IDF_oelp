@@ -61,12 +61,21 @@ function App() {
   const [shapeSuccess, setShapeSuccess] = useState("");
   const [isShapeDownloadLoading, setIsShapeDownloadLoading] = useState(false);
   const [hoveredShapeCoordinateKey, setHoveredShapeCoordinateKey] = useState("");
+  const [tabRefreshKey, setTabRefreshKey] = useState(0);
 
   const availableScenarios =
     modelOptions.find((option) => option.id === modelId)?.scenarios || ["historical"];
   const isObservedModel = modelId === "imd" || modelId === "imdaa";
-  const rangeMin = HISTORICAL_RANGE_LIMITS.min;
-  const rangeMax = HISTORICAL_RANGE_LIMITS.max;
+  const historicalRangeLimits =
+    modelId === "imdaa"
+      ? {
+          min: 1979,
+          max: 2020
+        }
+      : HISTORICAL_RANGE_LIMITS;
+
+  const rangeMin = historicalRangeLimits.min;
+  const rangeMax = historicalRangeLimits.max;
   const rangeSpread = Math.max(1, rangeMax - rangeMin);
   const fromPercent = ((historicalFrom - rangeMin) / rangeSpread) * 100;
   const toPercent = ((historicalTo - rangeMin) / rangeSpread) * 100;
@@ -91,6 +100,16 @@ function App() {
 
   useEffect(() => {
     setIdfData(null);
+    setRequestError("");
+    setCoordinateError("");
+    setShapeError("");
+    setShapeSuccess("");
+    setHoveredShapeCoordinateKey("");
+    setTabRefreshKey((currentKey) => currentKey + 1);
+    if (coordinateTab === "manual") {
+      setPolygonPath([]);
+      setPolygonGridPoints([]);
+    }
   }, [coordinateTab]);
 
   useEffect(() => {
@@ -98,6 +117,17 @@ function App() {
       setHoveredShapeCoordinateKey("");
     }
   }, [coordinateTab]);
+
+  useEffect(() => {
+    setHistoricalFrom((currentFrom) => Math.max(rangeMin, Math.min(currentFrom, rangeMax)));
+    setHistoricalTo((currentTo) => Math.max(rangeMin, Math.min(currentTo, rangeMax)));
+  }, [rangeMin, rangeMax]);
+
+  useEffect(() => {
+    if (historicalFrom > historicalTo) {
+      setHistoricalTo(historicalFrom);
+    }
+  }, [historicalFrom, historicalTo]);
 
   useEffect(() => {
     async function loadModels() {
@@ -307,8 +337,14 @@ function App() {
           coords: polygonGridPoints.map((point) => [point.latitude, point.longitude]),
           starting_year: Number(historicalFrom),
           ending_year: Number(historicalTo),
-            model: backendModelName,
-            scenerio: scenario
+          model: backendModelName,
+          scenerio: scenario,
+          ...(!isObservedModel && isFutureScenario
+            ? {
+                future_start_year: Number(futureFrom),
+                future_end_year: Number(futureTo)
+              }
+            : {})
         };
         const result = await generateShapeIdfCurve(shapePayload);
         setIdfData(result);
@@ -364,10 +400,10 @@ function App() {
       const backendModelName = selectedModel?.backendModel || modelId.replaceAll("-", "_");
       const payload = {
         coords: polygonGridPoints.map((point) => [point.latitude, point.longitude]),
-        starting_year: Number(historicalFrom),
-        ending_year: Number(historicalTo),
-          model: backendModelName,
-          scenerio: scenario
+        starting_year: Number(!isObservedModel && isFutureScenario ? futureFrom : historicalFrom),
+        ending_year: Number(!isObservedModel && isFutureScenario ? futureTo : historicalTo),
+        model: backendModelName,
+        scenerio: scenario
       };
       const shapeData = isObservedModel
         ? await getObservedDataForShape(payload)
@@ -505,7 +541,7 @@ function App() {
                 <select value={modelId} onChange={(event) => handleModelChange(event.target.value)}>
                   {modelOptions.map((option) => (
                     <option key={option.id} value={option.id}>
-                      {option.label}
+                      {(option.label || option.id).toUpperCase()}
                     </option>
                   ))}
                 </select>
@@ -657,6 +693,7 @@ function App() {
 
         <div className="right-workspace">
           <MapSelector
+            key={`map-${coordinateTab}-${tabRefreshKey}`}
             latitude={latitude}
             longitude={longitude}
             onCoordinateSelect={handleCoordinateSelect}
@@ -666,6 +703,7 @@ function App() {
           />
           <div id="results">
             <IdfChartPanel
+              key={`panel-${coordinateTab}-${tabRefreshKey}`}
               idfData={idfData}
               isLoading={isLoading}
               theme={theme}
@@ -696,7 +734,7 @@ function App() {
           </article>
           <article className="footer-credit-card">
             <h4>Research Scholar</h4>
-            <p>Dr. Ajith Bhaskar</p>
+            <p>Ajith Bhaskar</p>
           </article>
           <article className="footer-credit-card">
             <h4>Faculty Advisor</h4>
