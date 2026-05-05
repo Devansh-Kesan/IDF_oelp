@@ -88,7 +88,7 @@ body::before {
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 0 40px rgba(0, 212, 255, 0.15);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--header-border);
   backdrop-filter: blur(10px);
 }
@@ -100,14 +100,14 @@ body::before {
 }
 
 .iit-logo {
-  width: 148px;
-  height: 148px;
-  border-radius: 50%;
-  border: 3px solid var(--header-border);
-  background: #ffffff;
-  padding: 0.55rem;
+  width: 120px;
+  height: auto;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
   object-fit: contain;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
 }
 
 .header-actions {
