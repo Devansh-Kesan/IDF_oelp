@@ -9,7 +9,8 @@ export default function IdfChartPanel({
   theme = "dark",
   isShapeMode = false,
   onDownloadShapeData,
-  isShapeDownloadLoading = false
+  isShapeDownloadLoading = false,
+  onShapeCoordinateHoverChange
 }) {
   const [activeView, setActiveView] = useState("curve");
   const [selectedShapeReturnPeriod, setSelectedShapeReturnPeriod] = useState("");
@@ -259,62 +260,6 @@ export default function IdfChartPanel({
     }),
     [axisColor, gridColor, isLightMode, legendBackground]
   );
-  const rainfallCsv = useMemo(() => {
-    if (!hasRainfallData) {
-      return "";
-    }
-
-    const header = ["date", "observed_imd", "model", "bias_corrected"];
-    const rows = rainfallData.map((row) => [
-      row.time ?? "",
-      row.obs ?? "",
-      row.model ?? "",
-      row.corrected ?? ""
-    ]);
-    return [header, ...rows].map((parts) => parts.join(",")).join("\n");
-  }, [hasRainfallData, rainfallData]);
-  function handleDownloadRainfallCsv() {
-    if (!rainfallCsv) {
-      return;
-    }
-
-    const blob = new Blob([rainfallCsv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `rainfall-series-${idfData?.metadata?.model || "imd"}-${scenarioText}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }
-  const formattedRows = useMemo(
-    () =>
-      chartData.map((row) => ({
-        ...row,
-        ...Object.fromEntries(
-          returnPeriods.map((period) => [String(period), Number(row[String(period)]).toFixed(2)])
-        )
-      })),
-    [chartData, returnPeriods]
-  );
-
-  useEffect(() => {
-    if (!isShapeMode) {
-      return;
-    }
-
-    if (!returnPeriods.length) {
-      setSelectedShapeReturnPeriod("");
-      return;
-    }
-
-    const asNumber = Number(selectedShapeReturnPeriod);
-    if (!Number.isFinite(asNumber) || !returnPeriods.includes(asNumber)) {
-      setSelectedShapeReturnPeriod(String(returnPeriods[0]));
-    }
-  }, [isShapeMode, returnPeriods, selectedShapeReturnPeriod]);
-
   const selectedShapePeriod = Number(selectedShapeReturnPeriod);
   const shapeTableRows = useMemo(() => {
     if (!isShapeMode || !Number.isFinite(selectedShapePeriod)) {
@@ -332,6 +277,113 @@ export default function IdfChartPanel({
     });
   }, [isShapeMode, selectedShapePeriod, shapeDurations, shapeCoordinateKeys, shapeIdfByCoordinate]);
 
+  const rainfallCsv = useMemo(() => {
+    if (!hasRainfallData) {
+      return "";
+    }
+
+    const header = ["date", "observed_imd", "model", "bias_corrected"];
+    const rows = rainfallData.map((row) => [
+      row.time ?? "",
+      row.obs ?? "",
+      row.model ?? "",
+      row.corrected ?? ""
+    ]);
+    return [header, ...rows].map((parts) => parts.join(",")).join("\n");
+  }, [hasRainfallData, rainfallData]);
+
+  const idfTableCsv = useMemo(() => {
+    if (!hasData) {
+      return "";
+    }
+
+    const header = ["duration_hr", ...returnPeriods.map((period) => `${period}_year`)];
+    const rows = chartData.map((row) => [
+      row.duration ?? "",
+      ...returnPeriods.map((period) => row[String(period)] ?? "")
+    ]);
+    return [header, ...rows].map((parts) => parts.join(",")).join("\n");
+  }, [chartData, hasData, returnPeriods]);
+
+  const shapeIdfTableCsv = useMemo(() => {
+    if (!isShapeMode || !Number.isFinite(selectedShapePeriod) || !shapeTableRows.length) {
+      return "";
+    }
+
+    const header = ["duration_hr", ...shapeCoordinateKeys];
+    const rows = shapeTableRows.map((row) => [row.duration ?? "", ...shapeCoordinateKeys.map((key) => row[key] ?? "")]);
+    return [header, ...rows].map((parts) => parts.join(",")).join("\n");
+  }, [isShapeMode, selectedShapePeriod, shapeTableRows, shapeCoordinateKeys]);
+
+  function downloadCsvFile(csvContent, filename) {
+    if (!csvContent) {
+      return;
+    }
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+  function handleDownloadRainfallCsv() {
+    if (!rainfallCsv) {
+      return;
+    }
+
+    const blob = new Blob([rainfallCsv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rainfall-series-${idfData?.metadata?.model || "imd"}-${scenarioText}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleDownloadIdfTableCsv() {
+    downloadCsvFile(idfTableCsv, `idf-table-${idfData?.metadata?.model || "model"}-${scenarioText}.csv`);
+  }
+
+  function handleDownloadShapeIdfTableCsv() {
+    downloadCsvFile(
+      shapeIdfTableCsv,
+      `shape-idf-table-${idfData?.metadata?.model || "model"}-${selectedShapePeriod || "period"}-year.csv`
+    );
+  }
+  const formattedRows = useMemo(
+    () =>
+      chartData.map((row) => ({
+        ...row,
+        ...Object.fromEntries(
+          returnPeriods.map((period) => [String(period), Number(row[String(period)]).toFixed(2)])
+        )
+      })),
+    [chartData, returnPeriods]
+  );
+
+  useEffect(() => {
+    if (!isShapeMode) {
+      onShapeCoordinateHoverChange?.("");
+      return;
+    }
+
+    if (!returnPeriods.length) {
+      setSelectedShapeReturnPeriod("");
+      return;
+    }
+
+    const asNumber = Number(selectedShapeReturnPeriod);
+    if (!Number.isFinite(asNumber) || !returnPeriods.includes(asNumber)) {
+      setSelectedShapeReturnPeriod(String(returnPeriods[0]));
+    }
+  }, [isShapeMode, returnPeriods, selectedShapeReturnPeriod, onShapeCoordinateHoverChange]);
+
   return (
     <section className="card">
       <div className="result-toolbar">
@@ -347,6 +399,14 @@ export default function IdfChartPanel({
               disabled={isShapeDownloadLoading || !shapeCoordinateKeys.length}
             >
               {isShapeDownloadLoading ? "⏳ Downloading..." : "⬇ Download Shape Data"}
+            </button>
+            <button
+              type="button"
+              className="download-btn"
+              onClick={handleDownloadShapeIdfTableCsv}
+              disabled={!shapeIdfTableCsv}
+            >
+              ⬇ Download IDF Table CSV
             </button>
           </>
         ) : (
@@ -375,6 +435,11 @@ export default function IdfChartPanel({
             {activeView === "rainfall" && hasRainfallData ? (
               <button type="button" className="download-btn" onClick={handleDownloadRainfallCsv}>
                 ⬇ Download CSV
+              </button>
+            ) : null}
+            {hasData ? (
+              <button type="button" className="download-btn" onClick={handleDownloadIdfTableCsv}>
+                ⬇ Download IDF Table CSV
               </button>
             ) : null}
           </>
@@ -407,7 +472,14 @@ export default function IdfChartPanel({
               <tr>
                 <th>Duration (hr)</th>
                 {shapeCoordinateKeys.map((coordKey) => (
-                  <th key={coordKey}>{coordKey}</th>
+                  <th
+                    key={coordKey}
+                    onMouseEnter={() => onShapeCoordinateHoverChange?.(coordKey)}
+                    onMouseLeave={() => onShapeCoordinateHoverChange?.("")}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {coordKey}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -416,7 +488,14 @@ export default function IdfChartPanel({
                 <tr key={row.duration}>
                   <td>{row.duration}</td>
                   {shapeCoordinateKeys.map((coordKey) => (
-                    <td key={`${row.duration}-${coordKey}`}>{row[coordKey]}</td>
+                    <td
+                      key={`${row.duration}-${coordKey}`}
+                      onMouseEnter={() => onShapeCoordinateHoverChange?.(coordKey)}
+                      onMouseLeave={() => onShapeCoordinateHoverChange?.("")}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {row[coordKey]}
+                    </td>
                   ))}
                 </tr>
               ))}

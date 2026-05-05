@@ -14,6 +14,7 @@ import {
   generateIdfCurve,
   generateShapeIdfCurve,
   getAvailableModels,
+  getModelDataForShape,
   getObservedDataForShape
 } from "./services/apiClient";
 import { isCoordinateInsideIndiaBounds, normalizeCoordinates, parseCoordinateInput } from "./utils/grid";
@@ -59,6 +60,7 @@ function App() {
   const [shapeError, setShapeError] = useState("");
   const [shapeSuccess, setShapeSuccess] = useState("");
   const [isShapeDownloadLoading, setIsShapeDownloadLoading] = useState(false);
+  const [hoveredShapeCoordinateKey, setHoveredShapeCoordinateKey] = useState("");
 
   const availableScenarios =
     modelOptions.find((option) => option.id === modelId)?.scenarios || ["historical"];
@@ -89,6 +91,12 @@ function App() {
 
   useEffect(() => {
     setIdfData(null);
+  }, [coordinateTab]);
+
+  useEffect(() => {
+    if (coordinateTab !== "polygon") {
+      setHoveredShapeCoordinateKey("");
+    }
   }, [coordinateTab]);
 
   useEffect(() => {
@@ -233,6 +241,7 @@ function App() {
       setShapeError(error?.message || "Failed to process shapefile.");
       setPolygonPath([]);
       setPolygonGridPoints([]);
+      setHoveredShapeCoordinateKey("");
     }
   }
 
@@ -298,7 +307,8 @@ function App() {
           coords: polygonGridPoints.map((point) => [point.latitude, point.longitude]),
           starting_year: Number(historicalFrom),
           ending_year: Number(historicalTo),
-          model_name: backendModelName
+            model: backendModelName,
+            scenerio: scenario
         };
         const result = await generateShapeIdfCurve(shapePayload);
         setIdfData(result);
@@ -335,6 +345,7 @@ function App() {
     } catch (error) {
       setRequestError(error.message || "Failed to generate IDF curve from backend.");
       setIdfData(null);
+      setHoveredShapeCoordinateKey("");
     } finally {
       setIsLoading(false);
     }
@@ -355,9 +366,12 @@ function App() {
         coords: polygonGridPoints.map((point) => [point.latitude, point.longitude]),
         starting_year: Number(historicalFrom),
         ending_year: Number(historicalTo),
-        model_name: backendModelName
+          model: backendModelName,
+          scenerio: scenario
       };
-      const shapeData = await getObservedDataForShape(payload);
+      const shapeData = isObservedModel
+        ? await getObservedDataForShape(payload)
+        : await getModelDataForShape(payload);
       const timeSeries = Array.isArray(shapeData.time) ? shapeData.time : [];
       const coordinateColumns = Object.keys(shapeData).filter((key) => key !== "time");
       const header = ["date", ...coordinateColumns];
@@ -648,6 +662,7 @@ function App() {
             onCoordinateSelect={handleCoordinateSelect}
             polygonPath={polygonPath}
             gridPoints={polygonGridPoints}
+            highlightedShapeCoordinateKey={hoveredShapeCoordinateKey}
           />
           <div id="results">
             <IdfChartPanel
@@ -657,6 +672,7 @@ function App() {
               isShapeMode={coordinateTab === "polygon"}
               onDownloadShapeData={handleDownloadShapeData}
               isShapeDownloadLoading={isShapeDownloadLoading}
+              onShapeCoordinateHoverChange={setHoveredShapeCoordinateKey}
             />
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CircleMarker, GeoJSON, MapContainer, Marker, Polygon, TileLayer, useMapEvents } from "react-leaflet";
+import { CircleMarker, GeoJSON, MapContainer, Marker, Polygon, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
 import indiaBoundaryGeoJsonUrl from "../assets/India_bnd.geojson?url";
 
 const INDIA_VIEW_BOUNDS = [
@@ -22,12 +22,21 @@ function MapClickHandler({ onCoordinateSelect }) {
   return null;
 }
 
+function formatCoordinate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+  return numeric.toFixed(4);
+}
+
 export default function MapSelector({
   latitude,
   longitude,
   onCoordinateSelect,
   polygonPath = [],
-  gridPoints = []
+  gridPoints = [],
+  highlightedShapeCoordinateKey = ""
 }) {
   const [indiaBoundaryGeoJson, setIndiaBoundaryGeoJson] = useState(null);
   const hasSelectedPoint =
@@ -60,6 +69,13 @@ export default function MapSelector({
       isMounted = false;
     };
   }, []);
+
+  const highlightedCoordinate = highlightedShapeCoordinateKey
+    .split("_")
+    .map((value) => Number(value));
+  const highlightedLat = highlightedCoordinate[0];
+  const highlightedLon = highlightedCoordinate[1];
+  const hasHighlightedCoordinate = Number.isFinite(highlightedLat) && Number.isFinite(highlightedLon);
 
   return (
     <section className="card map-card">
@@ -107,17 +123,30 @@ export default function MapSelector({
           />
         )}
         {gridPoints.map((point) => (
-          <CircleMarker
-            key={`${point.latitude}-${point.longitude}`}
-            center={[point.latitude, point.longitude]}
-            radius={4}
-            pathOptions={{
-              color: "#ff006e",
-              fillColor: "#ff006e",
-              fillOpacity: 0.85,
-              weight: 1
-            }}
-          />
+          (() => {
+            const isHighlighted =
+              hasHighlightedCoordinate &&
+              Math.abs(point.latitude - highlightedLat) < 1e-6 &&
+              Math.abs(point.longitude - highlightedLon) < 1e-6;
+
+            return (
+              <CircleMarker
+                key={`${point.latitude}-${point.longitude}`}
+                center={[point.latitude, point.longitude]}
+                radius={isHighlighted ? 7 : 4}
+                pathOptions={{
+                  color: isHighlighted ? "#facc15" : "#ff006e",
+                  fillColor: isHighlighted ? "#facc15" : "#ff006e",
+                  fillOpacity: isHighlighted ? 0.95 : 0.85,
+                  weight: isHighlighted ? 2 : 1
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -4]}>
+                  {`Lat: ${formatCoordinate(point.latitude)}, Lon: ${formatCoordinate(point.longitude)}`}
+                </Tooltip>
+              </CircleMarker>
+            );
+          })()
         ))}
         {hasSelectedPoint && <Marker position={[latitude, longitude]} />}
       </MapContainer>

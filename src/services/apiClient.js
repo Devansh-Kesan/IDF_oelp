@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://140.245.196.182:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://10.32.15.241:8000";
 
 async function parseResponse(response) {
   const contentType = response.headers.get("content-type") || "";
@@ -48,22 +48,18 @@ export async function generateIdfCurve(payload) {
   const query = new URLSearchParams({
     lat: String(payload.coordinate.latitude),
     lon: String(payload.coordinate.longitude),
-    model_name: payload.model,
+    model: payload.model,
     starting_year: String(historicalRange.from),
     ending_year: String(historicalRange.to)
   });
 
   let endpoint = "/getIdfCurve_historic";
 
-  if (isImdRequest) {
-    endpoint = "/getImdData";
-  }
-
-  if (isImdaaRequest) {
-    endpoint = "/getImdaaData";
-  }
-
-  if (!isImdRequest && !isImdaaRequest && isFutureScenario) {
+  // Observed endpoints (IMD/IMD-AA) generate IDF directly from observed precipitation.
+  if (isImdRequest || isImdaaRequest) {
+    endpoint = "/getObservedData";
+  } else if (isFutureScenario) {
+    // Future GCM values require bias-correction against historical observations/model.
     const futureRange = payload.biasCorrection?.futureRange || {};
 
     query.set("scenerio", payload.scenario);
@@ -113,9 +109,25 @@ export async function getObservedDataForShape(payload) {
   return raw?.data || {};
 }
 
+export async function getModelDataForShape(payload) {
+  const raw = await request("/getModelDataForShape", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (raw?.status === "Failed") {
+    throw new Error(raw.message || "Shape model data request failed.");
+  }
+
+  return raw?.data || {};
+}
+
 export async function getAvailableModels() {
   const raw = await request("/getAvailableModels");
-  return Array.isArray(raw?.models) ? raw.models : [];
+  return Array.isArray(raw?.data?.models) ? raw.data.models : [];
 }
 
 export function getSampleIdfResponse() {
@@ -229,7 +241,7 @@ function normalizeShapeIdfResponse(rawResponse, payload) {
     durations,
     shapeIdfByCoordinate: data || {},
     metadata: {
-      model: payload?.model_name || "observed",
+      model: payload?.model || "observed",
       startingYear: payload?.starting_year,
       endingYear: payload?.ending_year
     }
