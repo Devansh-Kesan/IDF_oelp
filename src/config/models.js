@@ -6,6 +6,12 @@ export const MODEL_OPTIONS = [
     scenarios: ["historical"]
   },
   {
+    id: "imdaa",
+    label: "IMDAA (Observed)",
+    backendModel: "imdaa",
+    scenarios: ["historical"]
+  },
+  {
     id: "access-cm2",
     label: "access-cm2",
     backendModel: "access_cm2",

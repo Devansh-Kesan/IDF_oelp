@@ -10,7 +10,12 @@ import {
   HISTORICAL_RANGE_LIMITS,
   MODEL_OPTIONS
 } from "./config/models";
-import { generateIdfCurve, getAvailableModels } from "./services/apiClient";
+import {
+  generateIdfCurve,
+  generateShapeIdfCurve,
+  getAvailableModels,
+  getObservedDataForShape
+} from "./services/apiClient";
 import { isCoordinateInsideIndiaBounds, normalizeCoordinates, parseCoordinateInput } from "./utils/grid";
 import {
   generateGridPointsWithinPolygon,
@@ -20,6 +25,16 @@ import {
 
 const DEFAULT_SCENARIOS = ["historical", "ssp126", "ssp245", "ssp370", "ssp585"];
 const POLYGON_GRID_STEP = 0.25;
+
+function formatCoordinateForInput(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return "";
+  }
+
+  const fixed = numericValue.toFixed(6);
+  return fixed.replace(/\.?0+$/, "");
+}
 
 function App() {
   const [latitude, setLatitude] = useState(22.5);
@@ -43,10 +58,11 @@ function App() {
   const [polygonGridPoints, setPolygonGridPoints] = useState([]);
   const [shapeError, setShapeError] = useState("");
   const [shapeSuccess, setShapeSuccess] = useState("");
+  const [isShapeDownloadLoading, setIsShapeDownloadLoading] = useState(false);
 
   const availableScenarios =
     modelOptions.find((option) => option.id === modelId)?.scenarios || ["historical"];
-  const isImdModel = modelId === "imd";
+  const isObservedModel = modelId === "imd" || modelId === "imdaa";
   const rangeMin = HISTORICAL_RANGE_LIMITS.min;
   const rangeMax = HISTORICAL_RANGE_LIMITS.max;
   const rangeSpread = Math.max(1, rangeMax - rangeMin);
@@ -70,6 +86,10 @@ function App() {
       setScenario(nextModel.scenarios[0]);
     }
   }
+
+  useEffect(() => {
+    setIdfData(null);
+  }, [coordinateTab]);
 
   useEffect(() => {
     async function loadModels() {
@@ -118,8 +138,8 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    setLatitudeInput(Number(latitude).toFixed(4));
-    setLongitudeInput(Number(longitude).toFixed(4));
+    setLatitudeInput(formatCoordinateForInput(latitude));
+    setLongitudeInput(formatCoordinateForInput(longitude));
   }, [latitude, longitude]);
 
   function handleCoordinateSelect(nextLatitude, nextLongitude) {
@@ -134,22 +154,6 @@ function App() {
     } else {
       setLongitudeInput(value);
     }
-
-    if (value === "" || value === "-" || value === "." || value === "-.") {
-      return;
-    }
-
-    const parsed = parseCoordinateInput(value);
-    if (parsed === null) {
-      return;
-    }
-
-    if (type === "lat") {
-      setLatitude(parsed);
-    } else {
-      setLongitude(parsed);
-    }
-    setCoordinateError("");
   }
 
   function finalizeCoordinateInput(type) {
@@ -157,17 +161,17 @@ function App() {
     const parsed = parseCoordinateInput(rawValue);
     if (parsed === null) {
       setCoordinateError("Latitude/Longitude must be valid numbers.");
-      setLatitudeInput(Number(latitude).toFixed(4));
-      setLongitudeInput(Number(longitude).toFixed(4));
+      setLatitudeInput(formatCoordinateForInput(latitude));
+      setLongitudeInput(formatCoordinateForInput(longitude));
       return;
     }
 
     if (type === "lat") {
       setLatitude(parsed);
-      setLatitudeInput(parsed.toFixed(4));
+      setLatitudeInput(formatCoordinateForInput(parsed));
     } else {
       setLongitude(parsed);
-      setLongitudeInput(parsed.toFixed(4));
+      setLongitudeInput(formatCoordinateForInput(parsed));
     }
     setCoordinateError("");
   }
@@ -280,45 +284,105 @@ function App() {
 
     setIsLoading(true);
     setRequestError("");
-    const normalized = normalizeCoordinates(latitude, longitude);
-
-    const selectedModel = modelOptions.find((option) => option.id === modelId);
-    const backendModelName = selectedModel?.backendModel || modelId.replaceAll("-", "_");
-
-    const payload = {
-      coordinate: normalized,
-      model: backendModelName,
-      scenario,
-      biasCorrection: {
-        historicalRange: {
-          from: Number(historicalFrom),
-          to: Number(historicalTo)
-        },
-        ...(isFutureScenario
-          ? {
-              futureRange: {
-                from: Number(futureFrom),
-                to: Number(futureTo)
-              }
-            }
-          : {})
-      }
-    };
 
     try {
-      const result = await generateIdfCurve(payload);
-      setIdfData({
-        ...result,
-        metadata: {
-          ...(result?.metadata || {}),
-          scenario
+      const selectedModel = modelOptions.find((option) => option.id === modelId);
+      const backendModelName = selectedModel?.backendModel || modelId.replaceAll("-", "_");
+
+      if (coordinateTab === "polygon") {
+        if (!polygonGridPoints.length) {
+          throw new Error("Upload a polygon and ensure it has valid grid points before generating.");
         }
-      });
+
+        const shapePayload = {
+          coords: polygonGridPoints.map((point) => [point.latitude, point.longitude]),
+          starting_year: Number(historicalFrom),
+          ending_year: Number(historicalTo),
+          model_name: backendModelName
+        };
+        const result = await generateShapeIdfCurve(shapePayload);
+        setIdfData(result);
+      } else {
+        const normalized = normalizeCoordinates(latitude, longitude);
+        const payload = {
+          coordinate: normalized,
+          model: backendModelName,
+          scenario,
+          biasCorrection: {
+            historicalRange: {
+              from: Number(historicalFrom),
+              to: Number(historicalTo)
+            },
+            ...(isFutureScenario
+              ? {
+                  futureRange: {
+                    from: Number(futureFrom),
+                    to: Number(futureTo)
+                  }
+                }
+              : {})
+          }
+        };
+        const result = await generateIdfCurve(payload);
+        setIdfData({
+          ...result,
+          metadata: {
+            ...(result?.metadata || {}),
+            scenario
+          }
+        });
+      }
     } catch (error) {
       setRequestError(error.message || "Failed to generate IDF curve from backend.");
       setIdfData(null);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleDownloadShapeData() {
+    if (!polygonGridPoints.length) {
+      setRequestError("No polygon grid points available for download.");
+      return;
+    }
+
+    setIsShapeDownloadLoading(true);
+    setRequestError("");
+    try {
+      const selectedModel = modelOptions.find((option) => option.id === modelId);
+      const backendModelName = selectedModel?.backendModel || modelId.replaceAll("-", "_");
+      const payload = {
+        coords: polygonGridPoints.map((point) => [point.latitude, point.longitude]),
+        starting_year: Number(historicalFrom),
+        ending_year: Number(historicalTo),
+        model_name: backendModelName
+      };
+      const shapeData = await getObservedDataForShape(payload);
+      const timeSeries = Array.isArray(shapeData.time) ? shapeData.time : [];
+      const coordinateColumns = Object.keys(shapeData).filter((key) => key !== "time");
+      const header = ["date", ...coordinateColumns];
+      const rows = timeSeries.map((dateValue, index) => [
+        dateValue,
+        ...coordinateColumns.map((column) => {
+          const values = Array.isArray(shapeData[column]) ? shapeData[column] : [];
+          const rawValue = values[index];
+          return rawValue ?? "";
+        })
+      ]);
+      const csv = [header, ...rows].map((parts) => parts.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `shape-data-${backendModelName}-${historicalFrom}-${historicalTo}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setRequestError(error.message || "Failed to download shape data.");
+    } finally {
+      setIsShapeDownloadLoading(false);
     }
   }
 
@@ -414,12 +478,9 @@ function App() {
                     />
                   </label>
 
-                  <p className="helper-text">Grid scale is fixed to 0.25 degree for polygon selection.</p>
                   {shapeSuccess && <p className="helper-text success">✅ {shapeSuccess}</p>}
                   {shapeError && <p className="helper-text error">⚠️ {shapeError}</p>}
-                  {!!polygonGridPoints.length && (
-                    <p className="helper-text">📌 Grid points selected from polygon: {polygonGridPoints.length}</p>
-                  )}
+                  
                 </>
               )}
 
@@ -441,7 +502,7 @@ function App() {
                 <select
                   value={scenario}
                   onChange={(event) => setScenario(event.target.value)}
-                  disabled={isImdModel || availableScenarios.length === 1}
+                  disabled={isObservedModel || availableScenarios.length === 1}
                 >
                   {availableScenarios.map((scenarioOption) => (
                     <option key={scenarioOption} value={scenarioOption}>
@@ -451,7 +512,7 @@ function App() {
                 </select>
               </label>
 
-              {isImdModel && (
+              {isObservedModel && (
                 <div className="year-range-wrap">
                   <div className="range-header">
                     <span>📅 IMD Year Range</span>
@@ -491,7 +552,7 @@ function App() {
                 </div>
               )}
 
-              {!isImdModel && (
+              {!isObservedModel && (
                 <div className="year-range-wrap">
                   <div className="range-header">
                     <span>📅 Bias-Correction Range</span>
@@ -589,7 +650,14 @@ function App() {
             gridPoints={polygonGridPoints}
           />
           <div id="results">
-            <IdfChartPanel idfData={idfData} isLoading={isLoading} theme={theme} />
+            <IdfChartPanel
+              idfData={idfData}
+              isLoading={isLoading}
+              theme={theme}
+              isShapeMode={coordinateTab === "polygon"}
+              onDownloadShapeData={handleDownloadShapeData}
+              isShapeDownloadLoading={isShapeDownloadLoading}
+            />
           </div>
         </div>
       </main>

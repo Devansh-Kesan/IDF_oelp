@@ -1,12 +1,23 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Plot from "react-plotly.js";
 
 const PERIOD_COLORS = ["#00d4ff", "#00ffa3", "#f59e0b", "#f97316", "#ef4444", "#a855f7", "#ec4899"];
 
-export default function IdfChartPanel({ idfData, isLoading, theme = "dark" }) {
+export default function IdfChartPanel({
+  idfData,
+  isLoading,
+  theme = "dark",
+  isShapeMode = false,
+  onDownloadShapeData,
+  isShapeDownloadLoading = false
+}) {
   const [activeView, setActiveView] = useState("curve");
+  const [selectedShapeReturnPeriod, setSelectedShapeReturnPeriod] = useState("");
   const chartData = idfData?.rows || [];
   const returnPeriods = idfData?.returnPeriods || [];
+  const shapeCoordinateKeys = idfData?.coordinateKeys || [];
+  const shapeDurations = idfData?.durations || [];
+  const shapeIdfByCoordinate = idfData?.shapeIdfByCoordinate || {};
   const hasData = chartData.length > 0 && returnPeriods.length > 0;
   const rainfallSeries = idfData?.fullSeries || { time: [], obs: [], model: [], corrected: [] };
   const rainfallData = useMemo(
@@ -288,41 +299,132 @@ export default function IdfChartPanel({ idfData, isLoading, theme = "dark" }) {
     [chartData, returnPeriods]
   );
 
+  useEffect(() => {
+    if (!isShapeMode) {
+      return;
+    }
+
+    if (!returnPeriods.length) {
+      setSelectedShapeReturnPeriod("");
+      return;
+    }
+
+    const asNumber = Number(selectedShapeReturnPeriod);
+    if (!Number.isFinite(asNumber) || !returnPeriods.includes(asNumber)) {
+      setSelectedShapeReturnPeriod(String(returnPeriods[0]));
+    }
+  }, [isShapeMode, returnPeriods, selectedShapeReturnPeriod]);
+
+  const selectedShapePeriod = Number(selectedShapeReturnPeriod);
+  const shapeTableRows = useMemo(() => {
+    if (!isShapeMode || !Number.isFinite(selectedShapePeriod)) {
+      return [];
+    }
+
+    return shapeDurations.map((duration) => {
+      const row = { duration };
+      shapeCoordinateKeys.forEach((coordKey) => {
+        const value = shapeIdfByCoordinate?.[coordKey]?.[String(selectedShapePeriod)]?.[String(duration)];
+        const numericValue = typeof value === "number" ? value : Number(value);
+        row[coordKey] = Number.isFinite(numericValue) ? numericValue.toFixed(2) : "-";
+      });
+      return row;
+    });
+  }, [isShapeMode, selectedShapePeriod, shapeDurations, shapeCoordinateKeys, shapeIdfByCoordinate]);
+
   return (
     <section className="card">
       <div className="result-toolbar">
-        <button
-          type="button"
-          className={`result-pill ${activeView === "curve" ? "active" : ""}`}
-          onClick={() => setActiveView("curve")}
-        >
-          📊 Curve View
-        </button>
-        <button
-          type="button"
-          className={`result-pill ${activeView === "table" ? "active" : ""}`}
-          onClick={() => setActiveView("table")}
-        >
-          📋 Table View
-        </button>
-        <button
-          type="button"
-          className={`result-pill ${activeView === "rainfall" ? "active" : ""}`}
-          onClick={() => setActiveView("rainfall")}
-        >
-          🌧️ Rainfall View
-        </button>
-        {activeView === "rainfall" && hasRainfallData ? (
-          <button type="button" className="download-btn" onClick={handleDownloadRainfallCsv}>
-            ⬇ Download CSV
-          </button>
-        ) : null}
+        {isShapeMode ? (
+          <>
+            <button type="button" className="result-pill active">
+              📋 Shape Table View
+            </button>
+            <button
+              type="button"
+              className="download-btn"
+              onClick={onDownloadShapeData}
+              disabled={isShapeDownloadLoading || !shapeCoordinateKeys.length}
+            >
+              {isShapeDownloadLoading ? "⏳ Downloading..." : "⬇ Download Shape Data"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={`result-pill ${activeView === "curve" ? "active" : ""}`}
+              onClick={() => setActiveView("curve")}
+            >
+              📊 Curve View
+            </button>
+            <button
+              type="button"
+              className={`result-pill ${activeView === "table" ? "active" : ""}`}
+              onClick={() => setActiveView("table")}
+            >
+              📋 Table View
+            </button>
+            <button
+              type="button"
+              className={`result-pill ${activeView === "rainfall" ? "active" : ""}`}
+              onClick={() => setActiveView("rainfall")}
+            >
+              🌧️ Rainfall View
+            </button>
+            {activeView === "rainfall" && hasRainfallData ? (
+              <button type="button" className="download-btn" onClick={handleDownloadRainfallCsv}>
+                ⬇ Download CSV
+              </button>
+            ) : null}
+          </>
+        )}
         <div className="result-spacer" />
         <div className="result-meta">{modelText}</div>
       </div>
 
       {isLoading ? (
         <div className="state-box">✨ Generating your IDF curve with advanced climate models...</div>
+      ) : isShapeMode && returnPeriods.length > 0 ? (
+        <div className="idf-table-wrap">
+          <div className="shape-return-period-select">
+            <label>
+              Return Period
+              <select
+                value={selectedShapeReturnPeriod}
+                onChange={(event) => setSelectedShapeReturnPeriod(event.target.value)}
+              >
+                {returnPeriods.map((period) => (
+                  <option key={period} value={String(period)}>
+                    {period} Year
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <table className="idf-table">
+            <thead>
+              <tr>
+                <th>Duration (hr)</th>
+                {shapeCoordinateKeys.map((coordKey) => (
+                  <th key={coordKey}>{coordKey}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {shapeTableRows.map((row) => (
+                <tr key={row.duration}>
+                  <td>{row.duration}</td>
+                  {shapeCoordinateKeys.map((coordKey) => (
+                    <td key={`${row.duration}-${coordKey}`}>{row[coordKey]}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : isShapeMode ? (
+        <div className="state-box">Upload a polygon and generate results to view shape IDF table.</div>
       ) : hasData && activeView === "curve" ? (
         <div className="chart-wrap">
           <Plot

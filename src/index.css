@@ -603,6 +603,13 @@ select option {
   box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 24%, transparent);
 }
 
+.download-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
 .result-spacer {
   flex: 1;
 }
@@ -632,6 +639,26 @@ select option {
 .idf-table-wrap {
   width: 100%;
   overflow-x: auto;
+}
+
+.shape-return-period-select {
+  margin-bottom: 0.8rem;
+}
+
+.shape-return-period-select label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.shape-return-period-select select {
+  border-radius: 8px;
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  background: var(--pill-bg);
+  color: var(--text-primary);
+  padding: 0.35rem 0.5rem;
 }
 
 .idf-table {

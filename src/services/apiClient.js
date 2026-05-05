@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://10.32.15.241:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://140.245.196.182:8000";
 
 async function parseResponse(response) {
   const contentType = response.headers.get("content-type") || "";
@@ -41,6 +41,7 @@ async function request(path, options = {}) {
 
 export async function generateIdfCurve(payload) {
   const isImdRequest = payload.model === "imd";
+  const isImdaaRequest = payload.model === "imdaa";
   const isFutureScenario = payload.scenario !== "historical";
   const historicalRange = payload.biasCorrection?.historicalRange || {};
 
@@ -58,7 +59,11 @@ export async function generateIdfCurve(payload) {
     endpoint = "/getImdData";
   }
 
-  if (!isImdRequest && isFutureScenario) {
+  if (isImdaaRequest) {
+    endpoint = "/getImdaaData";
+  }
+
+  if (!isImdRequest && !isImdaaRequest && isFutureScenario) {
     const futureRange = payload.biasCorrection?.futureRange || {};
 
     query.set("scenerio", payload.scenario);
@@ -74,6 +79,38 @@ export async function generateIdfCurve(payload) {
   }
 
   return normalizeIdfResponse(raw);
+}
+
+export async function generateShapeIdfCurve(payload) {
+  const raw = await request("/getIdfCurveForShape", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (raw?.status === "Failed") {
+    throw new Error(raw.message || "Shape IDF generation failed.");
+  }
+
+  return normalizeShapeIdfResponse(raw, payload);
+}
+
+export async function getObservedDataForShape(payload) {
+  const raw = await request("/getObservedDataForShape", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (raw?.status === "Failed") {
+    throw new Error(raw.message || "Shape observed data request failed.");
+  }
+
+  return raw?.data || {};
 }
 
 export async function getAvailableModels() {
@@ -165,5 +202,36 @@ function normalizeFullSeries(fullSeries) {
     obs: Array.isArray(fullSeries.obs) ? fullSeries.obs : [],
     model: Array.isArray(fullSeries.model) ? fullSeries.model : [],
     corrected: Array.isArray(fullSeries.corrected) ? fullSeries.corrected : []
+  };
+}
+
+function normalizeShapeIdfResponse(rawResponse, payload) {
+  const data = rawResponse?.data;
+  const coordinateKeys = data && typeof data === "object" ? Object.keys(data) : [];
+  const firstCoordinate = coordinateKeys[0];
+  const firstIdfTable = firstCoordinate ? data[firstCoordinate] : {};
+  const returnPeriods = Object.keys(firstIdfTable || {})
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+
+  const durations = returnPeriods.length
+    ? Object.keys(firstIdfTable?.[String(returnPeriods[0])] || {})
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value))
+        .sort((a, b) => a - b)
+    : [];
+
+  return {
+    mode: "shape",
+    coordinateKeys,
+    returnPeriods,
+    durations,
+    shapeIdfByCoordinate: data || {},
+    metadata: {
+      model: payload?.model_name || "observed",
+      startingYear: payload?.starting_year,
+      endingYear: payload?.ending_year
+    }
   };
 }

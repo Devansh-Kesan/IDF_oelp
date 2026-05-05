@@ -1,3 +1,5 @@
+import { snapToGrid } from "./grid";
+
 function closeRingIfNeeded(ring) {
   if (!ring.length) {
     return ring;
@@ -90,14 +92,47 @@ export function generateGridPointsWithinPolygon(polygonCoordinates, gridStep) {
 
   const points = [];
   const epsilon = 1e-9;
+  const offset = gridStep / 2;
 
-  for (let lat = minLat; lat <= maxLat + epsilon; lat += gridStep) {
-    for (let lon = minLon; lon <= maxLon + epsilon; lon += gridStep) {
+  // Align scan to the canonical grid centers:
+  // ... 0.125, 0.375, 0.625, 0.875 for step=0.25
+  const alignedStart = (value) => {
+    const snapped = snapToGrid(value, gridStep);
+    if (snapped + epsilon < value) {
+      return Number((snapped + gridStep).toFixed(3));
+    }
+    return Number(snapped.toFixed(3));
+  };
+
+  const alignedEnd = (value) => {
+    const snapped = snapToGrid(value, gridStep);
+    if (snapped - epsilon > value) {
+      return Number((snapped - gridStep).toFixed(3));
+    }
+    return Number(snapped.toFixed(3));
+  };
+
+  // Fallback-safe alignment using arithmetic if needed.
+  const startLat = Number(
+    (Math.max(alignedStart(minLat), Math.ceil((minLat - offset) / gridStep) * gridStep + offset)).toFixed(3)
+  );
+  const endLat = Number(
+    (Math.min(alignedEnd(maxLat), Math.floor((maxLat - offset) / gridStep) * gridStep + offset)).toFixed(3)
+  );
+  const startLon = Number(
+    (Math.max(alignedStart(minLon), Math.ceil((minLon - offset) / gridStep) * gridStep + offset)).toFixed(3)
+  );
+  const endLon = Number(
+    (Math.min(alignedEnd(maxLon), Math.floor((maxLon - offset) / gridStep) * gridStep + offset)).toFixed(3)
+  );
+
+  for (let lat = startLat; lat <= endLat + epsilon; lat += gridStep) {
+    for (let lon = startLon; lon <= endLon + epsilon; lon += gridStep) {
       const candidate = [Number(lon.toFixed(6)), Number(lat.toFixed(6))];
       if (pointInPolygon(candidate, polygonCoordinates)) {
         points.push({
-          longitude: candidate[0],
-          latitude: candidate[1]
+          longitude: Number(candidate[0].toFixed(3)),
+          latitude: Number(candidate[1].toFixed(3))
         });
       }
     }
