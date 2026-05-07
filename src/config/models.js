@@ -27,7 +27,7 @@ export const DEFAULT_HISTORICAL_RANGE = {
 };
 
 export const HISTORICAL_RANGE_LIMITS = {
-  min: 1951,
+  min: 1979,
   max: 2014
 };
 

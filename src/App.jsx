@@ -67,10 +67,10 @@ function App() {
     modelOptions.find((option) => option.id === modelId)?.scenarios || ["historical"];
   const isObservedModel = modelId === "imd" || modelId === "imdaa";
   const historicalRangeLimits =
-    modelId === "imdaa"
+    modelId === "imd"
       ? {
-          min: 1979,
-          max: 2020
+          min: 1951,
+          max: 2014
         }
       : HISTORICAL_RANGE_LIMITS;
 
@@ -565,7 +565,7 @@ function App() {
               {isObservedModel && (
                 <div className="year-range-wrap">
                   <div className="range-header">
-                    <span>📅 IMD Year Range</span>
+                    <span>📅 Year Range</span>
                     <strong>
                       {historicalFrom} - {historicalTo}
                     </strong>
