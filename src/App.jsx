@@ -785,31 +785,39 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        <div className="footer-top">
+        <div className="footer-main">
           <div className="footer-branding">
             <img src={iitPalakkadLogo} alt="IIT Palakkad logo" className="footer-logo" />
             <div>
-              <p className="footer-kicker">IIT Palakkad</p>
-              <h3 className="footer-title">Monsoon Intensity Atlas</h3>
-              <p className="footer-subtitle">Climate-ready design intelligence for data-driven rainfall analysis.</p>
+              <p className="footer-kicker">Indian Institute of Technology Palakkad</p>
+              <h3 className="footer-title">IDF Curve Analysis Tool</h3>
+              <p className="footer-subtitle">Climate-ready design intelligence for data-driven rainfall analysis. Built for precision rainfall frequency analysis across India.</p>
             </div>
           </div>
+
+          <div className="footer-columns">
+            <article className="footer-column">
+              <h4>Developers</h4>
+              <p>Chirag Varshney</p>
+              <p>Devansh Kesan</p>
+            </article>
+            <article className="footer-column">
+              <h4>Research Scholar</h4>
+              <p>Ajith Bhaskar V</p>
+            </article>
+            <article className="footer-column">
+              <h4>Faculty Advisor</h4>
+              <p>Dr. B Sridharan</p>
+            </article>
+          </div>
         </div>
-        <div className="footer-credits-grid">
-          <article className="footer-credit-card">
-            <h4>Developers</h4>
-            <p>Chirag Varshney, Devansh Kesan</p>
-          </article>
-          <article className="footer-credit-card">
-            <h4>Research Scholar</h4>
-            <p>Ajith Bhaskar V</p>
-          </article>
-          <article className="footer-credit-card">
-            <h4>Faculty Advisor</h4>
-            <p>Dr. B Sridharan</p>
-          </article>
+
+        <div className="footer-bottom">
+          
+          <p className="footer-copyright">
+            © {new Date().getFullYear()} Indian Institute of Technology Palakkad. All rights reserved.
+          </p>
         </div>
-        <p className="footer-bottom-note">Built for precision rainfall frequency analysis across India.</p>
       </footer>
       <button type="button" className="feedback-fab" onClick={handleOpenFeedbackModal}>
         💬 Feedback
