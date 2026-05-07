@@ -698,6 +698,58 @@ select option {
   font-weight: 500;
 }
 
+.shape-coordinate-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.7);
+  backdrop-filter: blur(6px);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.shape-coordinate-modal {
+  width: min(1050px, 96vw);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 16px;
+  padding: 1rem;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  box-shadow: 0 30px 80px rgba(2, 6, 23, 0.6);
+}
+
+.shape-coordinate-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.shape-coordinate-modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.shape-coordinate-modal-subtitle {
+  margin: 0.45rem 0 0.8rem;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+}
+
+.shape-coordinate-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.shape-coordinate-chart {
+  height: 360px;
+}
+
 .helper-text {
   margin: 0.8rem 0 0;
   color: var(--text-secondary);

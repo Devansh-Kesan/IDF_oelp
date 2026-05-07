@@ -14,6 +14,7 @@ export default function IdfChartPanel({
 }) {
   const [activeView, setActiveView] = useState("curve");
   const [selectedShapeReturnPeriod, setSelectedShapeReturnPeriod] = useState("");
+  const [selectedShapeCoordinateKey, setSelectedShapeCoordinateKey] = useState("");
   const chartData = idfData?.rows || [];
   const returnPeriods = idfData?.returnPeriods || [];
   const shapeCoordinateKeys = idfData?.coordinateKeys || [];
@@ -314,6 +315,76 @@ export default function IdfChartPanel({
     const rows = shapeTableRows.map((row) => [row.duration ?? "", ...shapeCoordinateKeys.map((key) => row[key] ?? "")]);
     return [header, ...rows].map((parts) => parts.join(",")).join("\n");
   }, [isShapeMode, selectedShapePeriod, shapeTableRows, shapeCoordinateKeys]);
+  const selectedShapeCoordinateRows = useMemo(() => {
+    if (!isShapeMode || !selectedShapeCoordinateKey) {
+      return [];
+    }
+
+    const coordinateData = shapeIdfByCoordinate?.[selectedShapeCoordinateKey] || {};
+    if (!shapeDurations.length || !returnPeriods.length) {
+      return [];
+    }
+
+    return shapeDurations.map((duration) => {
+      const row = { duration };
+      returnPeriods.forEach((period) => {
+        const value = coordinateData?.[String(period)]?.[String(duration)];
+        const numericValue = typeof value === "number" ? value : Number(value);
+        row[String(period)] = Number.isFinite(numericValue) ? numericValue : null;
+      });
+      return row;
+    });
+  }, [isShapeMode, selectedShapeCoordinateKey, shapeIdfByCoordinate, shapeDurations, returnPeriods]);
+  const hasSelectedShapeCoordinateData = selectedShapeCoordinateRows.some((row) =>
+    returnPeriods.some((period) => row[String(period)] !== null)
+  );
+  const selectedShapeCoordinatePlotData = useMemo(
+    () =>
+      returnPeriods.map((period, index) => ({
+        x: selectedShapeCoordinateRows.map((row) => row.duration),
+        y: selectedShapeCoordinateRows.map((row) => row[String(period)]),
+        type: "scatter",
+        mode: "lines+markers",
+        name: `${period} Year Return Period`,
+        line: {
+          color: PERIOD_COLORS[index % PERIOD_COLORS.length],
+          width: 2.4
+        },
+        marker: {
+          size: 5
+        },
+        hovertemplate:
+          "Duration: %{x} hr<br>Intensity: %{y:.2f} mm/hr<br>Return Period: " +
+          `${period} year<extra></extra>`,
+        connectgaps: true
+      })),
+    [selectedShapeCoordinateRows, returnPeriods]
+  );
+  const selectedShapeCoordinateLabel = useMemo(() => {
+    if (!selectedShapeCoordinateKey) {
+      return "";
+    }
+
+    const [latRaw = "", lonRaw = ""] = selectedShapeCoordinateKey.split("_");
+    const lat = Number(latRaw);
+    const lon = Number(lonRaw);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      return `Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`;
+    }
+    return selectedShapeCoordinateKey;
+  }, [selectedShapeCoordinateKey]);
+  const selectedShapeCoordinateCsv = useMemo(() => {
+    if (!selectedShapeCoordinateRows.length) {
+      return "";
+    }
+
+    const header = ["duration_hr", ...returnPeriods.map((period) => `${period}_year`)];
+    const rows = selectedShapeCoordinateRows.map((row) => [
+      row.duration ?? "",
+      ...returnPeriods.map((period) => row[String(period)] ?? "")
+    ]);
+    return [header, ...rows].map((parts) => parts.join(",")).join("\n");
+  }, [selectedShapeCoordinateRows, returnPeriods]);
 
   function downloadCsvFile(csvContent, filename) {
     if (!csvContent) {
@@ -356,6 +427,24 @@ export default function IdfChartPanel({
       `shape-idf-table-${idfData?.metadata?.model || "model"}-${selectedShapePeriod || "period"}-year.csv`
     );
   }
+  function handleOpenShapeCoordinateModal(coordKey) {
+    setSelectedShapeCoordinateKey(coordKey);
+  }
+
+  function handleCloseShapeCoordinateModal() {
+    setSelectedShapeCoordinateKey("");
+  }
+
+  function handleDownloadSelectedShapeCoordinateCsv() {
+    if (!selectedShapeCoordinateCsv || !selectedShapeCoordinateKey) {
+      return;
+    }
+    const safeCoordinate = selectedShapeCoordinateKey.replaceAll("_", "-");
+    downloadCsvFile(
+      selectedShapeCoordinateCsv,
+      `idf-table-${idfData?.metadata?.model || "model"}-${safeCoordinate}-${scenarioText}.csv`
+    );
+  }
   const formattedRows = useMemo(
     () =>
       chartData.map((row) => ({
@@ -383,6 +472,20 @@ export default function IdfChartPanel({
       setSelectedShapeReturnPeriod(String(returnPeriods[0]));
     }
   }, [isShapeMode, returnPeriods, selectedShapeReturnPeriod, onShapeCoordinateHoverChange]);
+  useEffect(() => {
+    if (!isShapeMode) {
+      setSelectedShapeCoordinateKey("");
+      return;
+    }
+
+    if (
+      selectedShapeCoordinateKey &&
+      shapeCoordinateKeys.length &&
+      !shapeCoordinateKeys.includes(selectedShapeCoordinateKey)
+    ) {
+      setSelectedShapeCoordinateKey("");
+    }
+  }, [isShapeMode, selectedShapeCoordinateKey, shapeCoordinateKeys]);
 
   return (
     <section className="card">
@@ -474,6 +577,7 @@ export default function IdfChartPanel({
                 {shapeCoordinateKeys.map((coordKey) => (
                   <th
                     key={coordKey}
+                    onClick={() => handleOpenShapeCoordinateModal(coordKey)}
                     onMouseEnter={() => onShapeCoordinateHoverChange?.(coordKey)}
                     onMouseLeave={() => onShapeCoordinateHoverChange?.("")}
                     style={{ cursor: "pointer" }}
@@ -490,6 +594,7 @@ export default function IdfChartPanel({
                   {shapeCoordinateKeys.map((coordKey) => (
                     <td
                       key={`${row.duration}-${coordKey}`}
+                      onClick={() => handleOpenShapeCoordinateModal(coordKey)}
                       onMouseEnter={() => onShapeCoordinateHoverChange?.(coordKey)}
                       onMouseLeave={() => onShapeCoordinateHoverChange?.("")}
                       style={{ cursor: "pointer" }}
@@ -595,6 +700,73 @@ export default function IdfChartPanel({
           Select a location and run analysis to render the IDF curve.
         </div>
       )}
+      {isShapeMode && selectedShapeCoordinateKey ? (
+        <div className="shape-coordinate-modal-overlay" onClick={handleCloseShapeCoordinateModal}>
+          <div className="shape-coordinate-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="shape-coordinate-modal-header">
+              <h3>IDF Curve for Selected Grid Point</h3>
+              <button type="button" className="result-pill" onClick={handleCloseShapeCoordinateModal}>
+                Close
+              </button>
+            </div>
+            <p className="shape-coordinate-modal-subtitle">{selectedShapeCoordinateLabel}</p>
+            <div className="shape-coordinate-modal-actions">
+              <button
+                type="button"
+                className="download-btn"
+                onClick={handleDownloadSelectedShapeCoordinateCsv}
+                disabled={!selectedShapeCoordinateCsv}
+              >
+                ⬇ Download IDF Table CSV
+              </button>
+            </div>
+            {hasSelectedShapeCoordinateData ? (
+              <>
+                <div className="chart-wrap shape-coordinate-chart">
+                  <Plot
+                    data={selectedShapeCoordinatePlotData}
+                    layout={idfPlotLayout}
+                    config={{
+                      responsive: true,
+                      displaylogo: false,
+                      scrollZoom: true,
+                      modeBarButtonsToRemove: ["lasso2d", "select2d"]
+                    }}
+                    style={{ width: "100%", height: "100%" }}
+                    useResizeHandler
+                  />
+                </div>
+                <div className="idf-table-wrap">
+                  <table className="idf-table">
+                    <thead>
+                      <tr>
+                        <th>Duration (hr)</th>
+                        {returnPeriods.map((period) => (
+                          <th key={period}>{period} Year</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedShapeCoordinateRows.map((row) => (
+                        <tr key={`selected-shape-row-${row.duration}`}>
+                          <td>{row.duration}</td>
+                          {returnPeriods.map((period) => (
+                            <td key={`selected-shape-${row.duration}-${period}`}>
+                              {row[String(period)] === null ? "-" : Number(row[String(period)]).toFixed(2)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="state-box">No IDF values are available for this grid point.</div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
