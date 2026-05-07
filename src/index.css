@@ -270,7 +270,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1.5px solid color-mix(in srgb, var(--primary) 35%, transparent);
   border-radius: 12px;
   padding: 0.75rem 0.9rem;
@@ -282,12 +283,14 @@ select {
 }
 
 input::placeholder,
-select::placeholder {
+select::placeholder,
+textarea::placeholder {
   color: color-mix(in srgb, var(--text-primary) 45%, transparent);
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: #00d4ff;
   background: rgba(0, 212, 255, 0.08);
@@ -764,6 +767,82 @@ select option {
 .helper-text.success {
   color: #22c55e;
   font-weight: 600;
+}
+
+.feedback-fab {
+  position: fixed;
+  right: 1.1rem;
+  bottom: 1.1rem;
+  z-index: 1200;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(131, 56, 236, 0.2));
+  color: var(--text-primary);
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.35);
+}
+
+.feedback-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.7);
+  backdrop-filter: blur(6px);
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.feedback-modal {
+  width: min(600px, 96vw);
+  border-radius: 16px;
+  padding: 1rem;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  box-shadow: 0 30px 80px rgba(2, 6, 23, 0.6);
+}
+
+.feedback-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.feedback-modal-header h3 {
+  margin: 0;
+}
+
+.feedback-modal-subtitle {
+  margin: 0.4rem 0 0.9rem;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+}
+
+.feedback-form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.feedback-form textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.feedback-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.feedback-submit {
+  margin-top: 0;
+  width: auto;
+  min-width: 180px;
 }
 
 .site-footer {

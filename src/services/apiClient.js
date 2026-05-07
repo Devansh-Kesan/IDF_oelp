@@ -1,6 +1,8 @@
 import { decode } from "@msgpack/msgpack";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://10.32.15.241:8000";
+const FEEDBACK_ENDPOINT =
+  import.meta.env.VITE_FEEDBACK_ENDPOINT || "https://jsonplaceholder.typicode.com/posts";
 
 async function parseResponse(response) {
   const contentType = response.headers.get("content-type") || "";
@@ -138,6 +140,26 @@ export async function getModelDataForShape(payload) {
 export async function getAvailableModels() {
   const raw = await request("/getAvailableModels");
   return Array.isArray(raw?.data?.models) ? raw.data.models : [];
+}
+
+export async function submitFeedback(payload) {
+  const response = await fetch(FEEDBACK_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await parseResponse(response);
+  if (!response.ok) {
+    if (typeof data === "string") {
+      throw new Error(data || "Feedback submission failed.");
+    }
+    throw new Error(data?.detail || data?.message || "Feedback submission failed.");
+  }
+
+  return data;
 }
 
 export function getSampleIdfResponse() {

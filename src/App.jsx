@@ -15,7 +15,8 @@ import {
   generateShapeIdfCurve,
   getAvailableModels,
   getModelDataForShape,
-  getObservedDataForShape
+  getObservedDataForShape,
+  submitFeedback
 } from "./services/apiClient";
 import { isCoordinateInsideIndiaBounds, normalizeCoordinates, parseCoordinateInput } from "./utils/grid";
 import {
@@ -62,6 +63,13 @@ function App() {
   const [isShapeDownloadLoading, setIsShapeDownloadLoading] = useState(false);
   const [hoveredShapeCoordinateKey, setHoveredShapeCoordinateKey] = useState("");
   const [tabRefreshKey, setTabRefreshKey] = useState(0);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [feedbackName, setFeedbackName] = useState("");
+  const [feedbackEmail, setFeedbackEmail] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState("5");
+  const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState({ type: "", message: "" });
 
   const availableScenarios =
     modelOptions.find((option) => option.id === modelId)?.scenarios || ["historical"];
@@ -436,6 +444,66 @@ function App() {
     }
   }
 
+  function resetFeedbackForm() {
+    setFeedbackName("");
+    setFeedbackEmail("");
+    setFeedbackMessage("");
+    setFeedbackRating("5");
+    setFeedbackStatus({ type: "", message: "" });
+  }
+
+  function handleOpenFeedbackModal() {
+    setIsFeedbackModalOpen(true);
+    setFeedbackStatus({ type: "", message: "" });
+  }
+
+  function handleCloseFeedbackModal() {
+    if (isFeedbackSubmitting) {
+      return;
+    }
+    setIsFeedbackModalOpen(false);
+    resetFeedbackForm();
+  }
+
+  async function handleSubmitFeedback(event) {
+    event.preventDefault();
+    const trimmedMessage = feedbackMessage.trim();
+    if (!trimmedMessage) {
+      setFeedbackStatus({ type: "error", message: "Please share your feedback message." });
+      return;
+    }
+
+    setIsFeedbackSubmitting(true);
+    setFeedbackStatus({ type: "", message: "" });
+    try {
+      await submitFeedback({
+        name: feedbackName.trim(),
+        email: feedbackEmail.trim(),
+        rating: Number(feedbackRating),
+        message: trimmedMessage,
+        source: "oelp-idf-website",
+        submitted_at: new Date().toISOString(),
+        page_context: {
+          coordinate_mode: coordinateTab,
+          model: modelId,
+          scenario
+        }
+      });
+      setFeedbackStatus({ type: "success", message: "Thanks! Your feedback was submitted." });
+      setFeedbackName("");
+      setFeedbackEmail("");
+      setFeedbackMessage("");
+      setFeedbackRating("5");
+    } catch (error) {
+      setFeedbackStatus({
+        type: "error",
+        message: error?.message || "Could not submit feedback. Please try again."
+      });
+    } finally {
+      setIsFeedbackSubmitting(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="creative-header">
@@ -734,7 +802,7 @@ function App() {
           </article>
           <article className="footer-credit-card">
             <h4>Research Scholar</h4>
-            <p>Ajith Bhaskar</p>
+            <p>Ajith Bhaskar V</p>
           </article>
           <article className="footer-credit-card">
             <h4>Faculty Advisor</h4>
@@ -743,6 +811,84 @@ function App() {
         </div>
         <p className="footer-bottom-note">Built for precision rainfall frequency analysis across India.</p>
       </footer>
+      <button type="button" className="feedback-fab" onClick={handleOpenFeedbackModal}>
+        💬 Feedback
+      </button>
+
+      {isFeedbackModalOpen && (
+        <div className="feedback-modal-overlay" onClick={handleCloseFeedbackModal}>
+          <div className="feedback-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="feedback-modal-header">
+              <h3>Share Your Feedback</h3>
+              <button type="button" className="result-pill" onClick={handleCloseFeedbackModal}>
+                Close
+              </button>
+            </div>
+            <p className="feedback-modal-subtitle">
+              Tell us what worked well and what we can improve.
+            </p>
+            <form className="feedback-form" onSubmit={handleSubmitFeedback}>
+              <label>
+                Name (optional)
+                <input
+                  type="text"
+                  value={feedbackName}
+                  onChange={(event) => setFeedbackName(event.target.value)}
+                  placeholder="Your name"
+                />
+              </label>
+              <label>
+                Email (optional)
+                <input
+                  type="email"
+                  value={feedbackEmail}
+                  onChange={(event) => setFeedbackEmail(event.target.value)}
+                  placeholder="you@example.com"
+                />
+              </label>
+              <label>
+                Rating
+                <select value={feedbackRating} onChange={(event) => setFeedbackRating(event.target.value)}>
+                  {[5, 4, 3, 2, 1].map((value) => (
+                    <option key={value} value={String(value)}>
+                      {value} / 5
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Feedback
+                <textarea
+                  value={feedbackMessage}
+                  onChange={(event) => setFeedbackMessage(event.target.value)}
+                  rows={5}
+                  placeholder="Share your experience, suggestions, or issue..."
+                  required
+                />
+              </label>
+              {feedbackStatus.message ? (
+                <p className={`helper-text ${feedbackStatus.type === "error" ? "error" : "success"}`}>
+                  {feedbackStatus.type === "error" ? "⚠️ " : "✅ "}
+                  {feedbackStatus.message}
+                </p>
+              ) : null}
+              <div className="feedback-actions">
+                <button
+                  type="button"
+                  className="download-btn"
+                  onClick={handleCloseFeedbackModal}
+                  disabled={isFeedbackSubmitting}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="primary-btn feedback-submit" disabled={isFeedbackSubmitting}>
+                  {isFeedbackSubmitting ? "Submitting..." : "Submit Feedback"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
