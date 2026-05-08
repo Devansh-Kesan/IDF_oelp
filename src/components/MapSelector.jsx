@@ -135,14 +135,16 @@ export default function MapSelector({
                 center={[point.latitude, point.longitude]}
                 radius={isHighlighted ? 7 : 4}
                 pathOptions={{
-                  color: isHighlighted ? "#facc15" : "#ff006e",
-                  fillColor: isHighlighted ? "#facc15" : "#ff006e",
+                  color: isHighlighted ? "#facc15" : point.isBufferPoint ? "#ff006e" : "#3b82f6",
+                  fillColor: isHighlighted ? "#facc15" : point.isBufferPoint ? "#ff006e" : "#3b82f6",
                   fillOpacity: isHighlighted ? 0.95 : 0.85,
                   weight: isHighlighted ? 2 : 1
                 }}
               >
                 <Tooltip direction="top" offset={[0, -4]}>
-                  {`Lat: ${formatCoordinate(point.latitude)}, Lon: ${formatCoordinate(point.longitude)}`}
+                  {`Lat: ${formatCoordinate(point.latitude)}, Lon: ${formatCoordinate(point.longitude)}${
+                    point.isBufferPoint ? " (Buffer)" : " (Inside shape)"
+                  }`}
                 </Tooltip>
               </CircleMarker>
             );

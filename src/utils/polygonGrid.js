@@ -43,6 +43,61 @@ function pointInPolygon(point, polygonCoordinates) {
   return !holes.some((hole) => pointInRing(point, closeRingIfNeeded(hole)));
 }
 
+function toRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function toLocalKm(point, referenceLat) {
+  const [lon, lat] = point;
+  const latScale = 111.32;
+  const lonScale = 111.32 * Math.cos(toRadians(referenceLat));
+  return {
+    x: lon * lonScale,
+    y: lat * latScale
+  };
+}
+
+function distancePointToSegmentKm(point, segmentStart, segmentEnd, referenceLat) {
+  const p = toLocalKm(point, referenceLat);
+  const a = toLocalKm(segmentStart, referenceLat);
+  const b = toLocalKm(segmentEnd, referenceLat);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const denominator = dx * dx + dy * dy;
+
+  if (denominator <= Number.EPSILON) {
+    return Math.hypot(p.x - a.x, p.y - a.y);
+  }
+
+  const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / denominator;
+  const clampedT = Math.max(0, Math.min(1, t));
+  const projectionX = a.x + clampedT * dx;
+  const projectionY = a.y + clampedT * dy;
+  return Math.hypot(p.x - projectionX, p.y - projectionY);
+}
+
+function distancePointToPolygonBoundaryKm(point, polygonCoordinates) {
+  const rings = (polygonCoordinates || []).map((ring) => closeRingIfNeeded(ring || []));
+  const validRings = rings.filter((ring) => ring.length >= 2);
+  if (!validRings.length) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const referenceLat = point[1];
+  let minimumDistance = Number.POSITIVE_INFINITY;
+
+  validRings.forEach((ring) => {
+    for (let index = 0; index < ring.length - 1; index += 1) {
+      const distance = distancePointToSegmentKm(point, ring[index], ring[index + 1], referenceLat);
+      if (distance < minimumDistance) {
+        minimumDistance = distance;
+      }
+    }
+  });
+
+  return minimumDistance;
+}
+
 function polygonArea(ring) {
   let area = 0;
   for (let i = 0; i < ring.length - 1; i += 1) {
@@ -76,7 +131,7 @@ export function getPolygonFromFeature(feature) {
   return null;
 }
 
-export function generateGridPointsWithinPolygon(polygonCoordinates, gridStep) {
+export function generateGridPointsWithinPolygon(polygonCoordinates, gridStep, bufferKm = 0) {
   const outerRing = closeRingIfNeeded(polygonCoordinates[0] || []);
   if (!outerRing.length) {
     return [];
@@ -85,10 +140,19 @@ export function generateGridPointsWithinPolygon(polygonCoordinates, gridStep) {
   const longitudes = outerRing.map(([lon]) => lon);
   const latitudes = outerRing.map(([, lat]) => lat);
 
-  const minLon = Math.min(...longitudes);
-  const maxLon = Math.max(...longitudes);
-  const minLat = Math.min(...latitudes);
-  const maxLat = Math.max(...latitudes);
+  const ringMinLon = Math.min(...longitudes);
+  const ringMaxLon = Math.max(...longitudes);
+  const ringMinLat = Math.min(...latitudes);
+  const ringMaxLat = Math.max(...latitudes);
+  const normalizedBufferKm = Math.max(0, Number(bufferKm) || 0);
+  const meanLat = (ringMinLat + ringMaxLat) / 2;
+  const latBufferDegrees = normalizedBufferKm / 111.32;
+  const lonBufferDenominator = 111.32 * Math.max(Math.cos(toRadians(meanLat)), 0.2);
+  const lonBufferDegrees = normalizedBufferKm / lonBufferDenominator;
+  const minLon = ringMinLon - lonBufferDegrees;
+  const maxLon = ringMaxLon + lonBufferDegrees;
+  const minLat = ringMinLat - latBufferDegrees;
+  const maxLat = ringMaxLat + latBufferDegrees;
 
   const points = [];
   const epsilon = 1e-9;
@@ -129,10 +193,17 @@ export function generateGridPointsWithinPolygon(polygonCoordinates, gridStep) {
   for (let lat = startLat; lat <= endLat + epsilon; lat += gridStep) {
     for (let lon = startLon; lon <= endLon + epsilon; lon += gridStep) {
       const candidate = [Number(lon.toFixed(6)), Number(lat.toFixed(6))];
-      if (pointInPolygon(candidate, polygonCoordinates)) {
+      const isInsidePolygon = pointInPolygon(candidate, polygonCoordinates);
+      const isWithinBuffer =
+        !isInsidePolygon &&
+        normalizedBufferKm > 0 &&
+        distancePointToPolygonBoundaryKm(candidate, polygonCoordinates) <= normalizedBufferKm;
+
+      if (isInsidePolygon || isWithinBuffer) {
         points.push({
           longitude: Number(candidate[0].toFixed(3)),
-          latitude: Number(candidate[1].toFixed(3))
+          latitude: Number(candidate[1].toFixed(3)),
+          isBufferPoint: isWithinBuffer
         });
       }
     }

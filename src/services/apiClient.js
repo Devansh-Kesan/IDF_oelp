@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://10.128.10.78:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const FEEDBACK_ENDPOINT =
   import.meta.env.VITE_FEEDBACK_ENDPOINT || "https://jsonplaceholder.typicode.com/posts";
 

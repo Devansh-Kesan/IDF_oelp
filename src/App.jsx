@@ -12,14 +12,11 @@ import {
   MODEL_OPTIONS
 } from "./config/models";
 import {
-  downloadShapefile,
   generateIdfCurve,
   generateShapeIdfCurve,
-  getAvailableShapes,
   getAvailableModels,
   getModelDataForShape,
-  getObservedDataForShape,
-  submitFeedback
+  getObservedDataForShape
 } from "./services/apiClient";
 import { isCoordinateInsideIndiaBounds, normalizeCoordinates, parseCoordinateInput } from "./utils/grid";
 import {
@@ -30,6 +27,7 @@ import {
 
 const DEFAULT_SCENARIOS = ["historical", "ssp126", "ssp245", "ssp370", "ssp585"];
 const POLYGON_GRID_STEP = 0.25;
+const FEEDBACK_FORM_URL = import.meta.env.VITE_FEEDBACK_FORM_URL || "";
 
 function formatCoordinateForInput(value) {
   const numericValue = Number(value);
@@ -59,25 +57,16 @@ function App() {
   const [coordinateTab, setCoordinateTab] = useState("manual");
   const [latitudeInput, setLatitudeInput] = useState("22.5000");
   const [longitudeInput, setLongitudeInput] = useState("78.7500");
+  const [polygonCoordinates, setPolygonCoordinates] = useState(null);
   const [polygonPath, setPolygonPath] = useState([]);
   const [polygonGridPoints, setPolygonGridPoints] = useState([]);
+  const [polygonBufferKm, setPolygonBufferKm] = useState(0);
+  const [polygonBufferInput, setPolygonBufferInput] = useState("0");
   const [shapeError, setShapeError] = useState("");
   const [shapeSuccess, setShapeSuccess] = useState("");
-  const [shapeSource, setShapeSource] = useState("upload");
-  const [availableShapes, setAvailableShapes] = useState([]);
-  const [selectedShapeFile, setSelectedShapeFile] = useState("");
-  const [isShapeListLoading, setIsShapeListLoading] = useState(false);
-  const [isShapeSelectionLoading, setIsShapeSelectionLoading] = useState(false);
   const [isShapeDownloadLoading, setIsShapeDownloadLoading] = useState(false);
   const [hoveredShapeCoordinateKey, setHoveredShapeCoordinateKey] = useState("");
   const [tabRefreshKey, setTabRefreshKey] = useState(0);
-  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
-  const [feedbackName, setFeedbackName] = useState("");
-  const [feedbackEmail, setFeedbackEmail] = useState("");
-  const [feedbackMessage, setFeedbackMessage] = useState("");
-  const [feedbackRating, setFeedbackRating] = useState("5");
-  const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
-  const [feedbackStatus, setFeedbackStatus] = useState({ type: "", message: "" });
 
   const availableScenarios =
     modelOptions.find((option) => option.id === modelId)?.scenarios || ["historical"];
@@ -120,14 +109,14 @@ function App() {
     setCoordinateError("");
     setShapeError("");
     setShapeSuccess("");
-    setShapeSource("upload");
-    setSelectedShapeFile("");
-    setIsShapeSelectionLoading(false);
     setHoveredShapeCoordinateKey("");
     setTabRefreshKey((currentKey) => currentKey + 1);
     if (coordinateTab === "manual") {
+      setPolygonCoordinates(null);
       setPolygonPath([]);
       setPolygonGridPoints([]);
+      setPolygonBufferKm(0);
+      setPolygonBufferInput("0");
     }
   }, [coordinateTab]);
 
@@ -135,27 +124,6 @@ function App() {
     if (coordinateTab !== "polygon") {
       setHoveredShapeCoordinateKey("");
     }
-  }, [coordinateTab]);
-
-  useEffect(() => {
-    if (coordinateTab !== "polygon") {
-      return;
-    }
-
-    async function loadAvailableShapes() {
-      setIsShapeListLoading(true);
-      try {
-        const shapes = await getAvailableShapes();
-        setAvailableShapes(shapes);
-      } catch (error) {
-        setAvailableShapes([]);
-        setShapeError(error?.message || "Failed to load available shapefiles.");
-      } finally {
-        setIsShapeListLoading(false);
-      }
-    }
-
-    loadAvailableShapes();
   }, [coordinateTab]);
 
   useEffect(() => {
@@ -254,6 +222,34 @@ function App() {
     setCoordinateError("");
   }
 
+  function rebuildPolygonGrid(nextPolygonCoordinates, nextBufferKm, options = {}) {
+    const nextPolygonPath = toLeafletLatLngPath(nextPolygonCoordinates);
+    const nextGridPoints = generateGridPointsWithinPolygon(
+      nextPolygonCoordinates,
+      POLYGON_GRID_STEP,
+      nextBufferKm
+    );
+
+    if (!nextGridPoints.length) {
+      throw new Error("No grid points were found inside polygon/buffer. Try reducing the buffer or upload another shape.");
+    }
+
+    const bufferedCount = nextGridPoints.filter((point) => point.isBufferPoint).length;
+    const insideCount = nextGridPoints.length - bufferedCount;
+
+    setPolygonPath(nextPolygonPath);
+    setPolygonGridPoints(nextGridPoints);
+    setLatitude(nextGridPoints[0].latitude);
+    setLongitude(nextGridPoints[0].longitude);
+    setShapeSuccess(
+      `Polygon loaded: ${insideCount} inside-shape points + ${bufferedCount} buffer points (buffer ${nextBufferKm} km).`
+    );
+    setShapeError("");
+    if (!options.keepHoveredPoint) {
+      setHoveredShapeCoordinateKey("");
+    }
+  }
+
   async function processShapeZip(file) {
     try {
       if (!window.shp) {
@@ -280,22 +276,12 @@ function App() {
         throw new Error("Uploaded polygon geometry could not be parsed.");
       }
 
-      const nextPolygonPath = toLeafletLatLngPath(polygonCoordinates);
-      const nextGridPoints = generateGridPointsWithinPolygon(polygonCoordinates, POLYGON_GRID_STEP);
-
-      if (!nextGridPoints.length) {
-        throw new Error("No grid points were found inside polygon. Try a smaller grid scale.");
-      }
-
-      setPolygonPath(nextPolygonPath);
-      setPolygonGridPoints(nextGridPoints);
-      setLatitude(nextGridPoints[0].latitude);
-      setLongitude(nextGridPoints[0].longitude);
-      setShapeSuccess(`Polygon loaded. Selected ${nextGridPoints.length} grid points.`);
-      setShapeError("");
+      setPolygonCoordinates(polygonCoordinates);
+      rebuildPolygonGrid(polygonCoordinates, polygonBufferKm);
     } catch (error) {
       setShapeSuccess("");
       setShapeError(error?.message || "Failed to process shapefile.");
+      setPolygonCoordinates(null);
       setPolygonPath([]);
       setPolygonGridPoints([]);
       setHoveredShapeCoordinateKey("");
@@ -318,34 +304,47 @@ function App() {
     await processShapeZip(file);
   }
 
-  async function handleServerShapeSelect(fileName) {
-    if (!fileName) {
-      setSelectedShapeFile("");
-      setPolygonPath([]);
-      setPolygonGridPoints([]);
-      setShapeSuccess("");
-      setShapeError("");
-      setHoveredShapeCoordinateKey("");
+  function handlePolygonBufferChange(value) {
+    setPolygonBufferInput(value);
+
+    const normalized = value.trim();
+    if (!normalized) {
+      setPolygonBufferKm(0);
+      if (!polygonCoordinates) {
+        return;
+      }
+      try {
+        rebuildPolygonGrid(polygonCoordinates, 0, { keepHoveredPoint: true });
+      } catch (error) {
+        setShapeSuccess("");
+        setShapeError(error?.message || "Failed to apply polygon buffer.");
+        setPolygonPath([]);
+        setPolygonGridPoints([]);
+        setHoveredShapeCoordinateKey("");
+      }
       return;
     }
 
-    setSelectedShapeFile(fileName);
-    setIsShapeSelectionLoading(true);
-    setShapeError("");
-    setShapeSuccess("Downloading and processing shapefile...");
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return;
+    }
+
+    const nextBufferKm = parsed;
+    setPolygonBufferKm(nextBufferKm);
+
+    if (!polygonCoordinates) {
+      return;
+    }
 
     try {
-      const shapeBlob = await downloadShapefile(fileName);
-      const zipFile = new File([shapeBlob], fileName, { type: "application/zip" });
-      await processShapeZip(zipFile);
+      rebuildPolygonGrid(polygonCoordinates, nextBufferKm, { keepHoveredPoint: true });
     } catch (error) {
       setShapeSuccess("");
-      setShapeError(error?.message || "Failed to download selected shapefile.");
+      setShapeError(error?.message || "Failed to apply polygon buffer.");
       setPolygonPath([]);
       setPolygonGridPoints([]);
       setHoveredShapeCoordinateKey("");
-    } finally {
-      setIsShapeSelectionLoading(false);
     }
   }
 
@@ -510,64 +509,12 @@ function App() {
     }
   }
 
-  function resetFeedbackForm() {
-    setFeedbackName("");
-    setFeedbackEmail("");
-    setFeedbackMessage("");
-    setFeedbackRating("5");
-    setFeedbackStatus({ type: "", message: "" });
-  }
-
-  function handleOpenFeedbackModal() {
-    setIsFeedbackModalOpen(true);
-    setFeedbackStatus({ type: "", message: "" });
-  }
-
-  function handleCloseFeedbackModal() {
-    if (isFeedbackSubmitting) {
+  function handleOpenFeedbackForm() {
+    if (!FEEDBACK_FORM_URL) {
+      setRequestError("Feedback form URL is not configured. Set VITE_FEEDBACK_FORM_URL.");
       return;
     }
-    setIsFeedbackModalOpen(false);
-    resetFeedbackForm();
-  }
-
-  async function handleSubmitFeedback(event) {
-    event.preventDefault();
-    const trimmedMessage = feedbackMessage.trim();
-    if (!trimmedMessage) {
-      setFeedbackStatus({ type: "error", message: "Please share your feedback message." });
-      return;
-    }
-
-    setIsFeedbackSubmitting(true);
-    setFeedbackStatus({ type: "", message: "" });
-    try {
-      await submitFeedback({
-        name: feedbackName.trim(),
-        email: feedbackEmail.trim(),
-        rating: Number(feedbackRating),
-        message: trimmedMessage,
-        source: "oelp-idf-website",
-        submitted_at: new Date().toISOString(),
-        page_context: {
-          coordinate_mode: coordinateTab,
-          model: modelId,
-          scenario
-        }
-      });
-      setFeedbackStatus({ type: "success", message: "Thanks! Your feedback was submitted." });
-      setFeedbackName("");
-      setFeedbackEmail("");
-      setFeedbackMessage("");
-      setFeedbackRating("5");
-    } catch (error) {
-      setFeedbackStatus({
-        type: "error",
-        message: error?.message || "Could not submit feedback. Please try again."
-      });
-    } finally {
-      setIsFeedbackSubmitting(false);
-    }
+    window.open(FEEDBACK_FORM_URL, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -659,23 +606,6 @@ function App() {
               {coordinateTab === "polygon" && (
                 <>
                   <label>
-                    🧭 Shapefile Source
-                    <select
-                      value={shapeSource}
-                      onChange={(event) => {
-                        const nextSource = event.target.value;
-                        setShapeSource(nextSource);
-                        setShapeError("");
-                        setShapeSuccess("");
-                      }}
-                    >
-                      <option value="upload">Upload ZIP</option>
-                      <option value="server">Select from server</option>
-                    </select>
-                  </label>
-
-                  {shapeSource === "upload" ? (
-                  <label>
                     🗂️ Upload Polygon Shapefile (.zip)
                     <input
                       type="file"
@@ -683,31 +613,21 @@ function App() {
                       onChange={(event) => handleShapeZipUpload(event.target.files?.[0])}
                     />
                   </label>
-                  ) : (
-                    <label>
-                      📂 Select Available Shapefile
-                      <select
-                        value={selectedShapeFile}
-                        onChange={(event) => handleServerShapeSelect(event.target.value)}
-                        disabled={isShapeListLoading || isShapeSelectionLoading}
-                      >
-                        <option value="">
-                          {isShapeListLoading ? "Loading shapefiles..." : "Select shapefile"}
-                        </option>
-                        {availableShapes.map((shape) => (
-                          <option key={shape.file_name} value={shape.file_name}>
-                            {shape.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
 
-                  {shapeSource === "server" && !isShapeListLoading && !availableShapes.length && (
-                    <p className="helper-text error">⚠️ No shapefiles are currently available on server.</p>
-                  )}
-                  {shapeSource === "server" && isShapeSelectionLoading && (
-                    <p className="helper-text">⏳ Preparing selected shapefile...</p>
+                  <label>
+                    📏 Buffer Around Polygon (km)
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={polygonBufferInput}
+                      onChange={(event) => handlePolygonBufferChange(event.target.value)}
+                    />
+                  </label>
+                  {!!polygonGridPoints.length && (
+                    <p className="helper-text">
+                      🔵 Blue points are inside shape, 🟣 pink points are included by buffer.
+                    </p>
                   )}
 
                   {shapeSuccess && <p className="helper-text success">✅ {shapeSuccess}</p>}
@@ -933,84 +853,9 @@ function App() {
           </p>
         </div>
       </footer>
-      <button type="button" className="feedback-fab" onClick={handleOpenFeedbackModal}>
+      <button type="button" className="feedback-fab" onClick={handleOpenFeedbackForm}>
         💬 Feedback
       </button>
-
-      {isFeedbackModalOpen && (
-        <div className="feedback-modal-overlay" onClick={handleCloseFeedbackModal}>
-          <div className="feedback-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="feedback-modal-header">
-              <h3>Share Your Feedback</h3>
-              <button type="button" className="result-pill" onClick={handleCloseFeedbackModal}>
-                Close
-              </button>
-            </div>
-            <p className="feedback-modal-subtitle">
-              Tell us what worked well and what we can improve.
-            </p>
-            <form className="feedback-form" onSubmit={handleSubmitFeedback}>
-              <label>
-                Name (optional)
-                <input
-                  type="text"
-                  value={feedbackName}
-                  onChange={(event) => setFeedbackName(event.target.value)}
-                  placeholder="Your name"
-                />
-              </label>
-              <label>
-                Email (optional)
-                <input
-                  type="email"
-                  value={feedbackEmail}
-                  onChange={(event) => setFeedbackEmail(event.target.value)}
-                  placeholder="you@example.com"
-                />
-              </label>
-              <label>
-                Rating
-                <select value={feedbackRating} onChange={(event) => setFeedbackRating(event.target.value)}>
-                  {[5, 4, 3, 2, 1].map((value) => (
-                    <option key={value} value={String(value)}>
-                      {value} / 5
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Feedback
-                <textarea
-                  value={feedbackMessage}
-                  onChange={(event) => setFeedbackMessage(event.target.value)}
-                  rows={5}
-                  placeholder="Share your experience, suggestions, or issue..."
-                  required
-                />
-              </label>
-              {feedbackStatus.message ? (
-                <p className={`helper-text ${feedbackStatus.type === "error" ? "error" : "success"}`}>
-                  {feedbackStatus.type === "error" ? "⚠️ " : "✅ "}
-                  {feedbackStatus.message}
-                </p>
-              ) : null}
-              <div className="feedback-actions">
-                <button
-                  type="button"
-                  className="download-btn"
-                  onClick={handleCloseFeedbackModal}
-                  disabled={isFeedbackSubmitting}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="primary-btn feedback-submit" disabled={isFeedbackSubmitting}>
-                  {isFeedbackSubmitting ? "Submitting..." : "Submit Feedback"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
