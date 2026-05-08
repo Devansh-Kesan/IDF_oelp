@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://10.128.10.255:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://10.128.10.78:8000";
 const FEEDBACK_ENDPOINT =
   import.meta.env.VITE_FEEDBACK_ENDPOINT || "https://jsonplaceholder.typicode.com/posts";
 
@@ -140,6 +140,31 @@ export async function getModelDataForShape(payload) {
 export async function getAvailableModels() {
   const raw = await request("/getAvailableModels");
   return Array.isArray(raw?.data?.models) ? raw.data.models : [];
+}
+
+export async function getAvailableShapes() {
+  const raw = await request("/getAvailableShapes");
+  return Array.isArray(raw?.data) ? raw.data : [];
+}
+
+export async function downloadShapefile(fileName) {
+  const query = new URLSearchParams({
+    file_name: fileName
+  });
+  const response = await fetch(`${API_BASE_URL}/download_shapefile?${query.toString()}`);
+
+  if (!response.ok) {
+    let errorMessage = "Failed to download shapefile.";
+    try {
+      const errorPayload = await response.json();
+      errorMessage = errorPayload?.detail || errorPayload?.message || errorMessage;
+    } catch {
+      // Keep default message when response is not JSON.
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.blob();
 }
 
 export async function submitFeedback(payload) {

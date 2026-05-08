@@ -1,3 +1,4 @@
+import groupLogo from "./assets/Group_logo.png";
 import { useEffect, useState } from "react";
 import MapSelector from "./components/MapSelector";
 import IdfChartPanel from "./components/IdfChartPanel";
@@ -11,8 +12,10 @@ import {
   MODEL_OPTIONS
 } from "./config/models";
 import {
+  downloadShapefile,
   generateIdfCurve,
   generateShapeIdfCurve,
+  getAvailableShapes,
   getAvailableModels,
   getModelDataForShape,
   getObservedDataForShape,
@@ -41,7 +44,7 @@ function formatCoordinateForInput(value) {
 function App() {
   const [latitude, setLatitude] = useState(22.5);
   const [longitude, setLongitude] = useState(78.75);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [modelOptions, setModelOptions] = useState(MODEL_OPTIONS);
   const [scenario, setScenario] = useState("historical");
@@ -60,6 +63,11 @@ function App() {
   const [polygonGridPoints, setPolygonGridPoints] = useState([]);
   const [shapeError, setShapeError] = useState("");
   const [shapeSuccess, setShapeSuccess] = useState("");
+  const [shapeSource, setShapeSource] = useState("upload");
+  const [availableShapes, setAvailableShapes] = useState([]);
+  const [selectedShapeFile, setSelectedShapeFile] = useState("");
+  const [isShapeListLoading, setIsShapeListLoading] = useState(false);
+  const [isShapeSelectionLoading, setIsShapeSelectionLoading] = useState(false);
   const [isShapeDownloadLoading, setIsShapeDownloadLoading] = useState(false);
   const [hoveredShapeCoordinateKey, setHoveredShapeCoordinateKey] = useState("");
   const [tabRefreshKey, setTabRefreshKey] = useState(0);
@@ -112,6 +120,9 @@ function App() {
     setCoordinateError("");
     setShapeError("");
     setShapeSuccess("");
+    setShapeSource("upload");
+    setSelectedShapeFile("");
+    setIsShapeSelectionLoading(false);
     setHoveredShapeCoordinateKey("");
     setTabRefreshKey((currentKey) => currentKey + 1);
     if (coordinateTab === "manual") {
@@ -124,6 +135,27 @@ function App() {
     if (coordinateTab !== "polygon") {
       setHoveredShapeCoordinateKey("");
     }
+  }, [coordinateTab]);
+
+  useEffect(() => {
+    if (coordinateTab !== "polygon") {
+      return;
+    }
+
+    async function loadAvailableShapes() {
+      setIsShapeListLoading(true);
+      try {
+        const shapes = await getAvailableShapes();
+        setAvailableShapes(shapes);
+      } catch (error) {
+        setAvailableShapes([]);
+        setShapeError(error?.message || "Failed to load available shapefiles.");
+      } finally {
+        setIsShapeListLoading(false);
+      }
+    }
+
+    loadAvailableShapes();
   }, [coordinateTab]);
 
   useEffect(() => {
@@ -222,20 +254,7 @@ function App() {
     setCoordinateError("");
   }
 
-  async function handleShapeZipUpload(file) {
-    if (!file) {
-      return;
-    }
-
-    if (!file.name.toLowerCase().endsWith(".zip")) {
-      setShapeError("Please upload a zipped shapefile (.zip).");
-      setShapeSuccess("");
-      return;
-    }
-
-    setShapeError("");
-    setShapeSuccess("Processing shapefile...");
-
+  async function processShapeZip(file) {
     try {
       if (!window.shp) {
         throw new Error("Shapefile parser is not loaded. Please refresh and try again.");
@@ -280,6 +299,53 @@ function App() {
       setPolygonPath([]);
       setPolygonGridPoints([]);
       setHoveredShapeCoordinateKey("");
+    }
+  }
+
+  async function handleShapeZipUpload(file) {
+    if (!file) {
+      return;
+    }
+
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      setShapeError("Please upload a zipped shapefile (.zip).");
+      setShapeSuccess("");
+      return;
+    }
+
+    setShapeError("");
+    setShapeSuccess("Processing shapefile...");
+    await processShapeZip(file);
+  }
+
+  async function handleServerShapeSelect(fileName) {
+    if (!fileName) {
+      setSelectedShapeFile("");
+      setPolygonPath([]);
+      setPolygonGridPoints([]);
+      setShapeSuccess("");
+      setShapeError("");
+      setHoveredShapeCoordinateKey("");
+      return;
+    }
+
+    setSelectedShapeFile(fileName);
+    setIsShapeSelectionLoading(true);
+    setShapeError("");
+    setShapeSuccess("Downloading and processing shapefile...");
+
+    try {
+      const shapeBlob = await downloadShapefile(fileName);
+      const zipFile = new File([shapeBlob], fileName, { type: "application/zip" });
+      await processShapeZip(zipFile);
+    } catch (error) {
+      setShapeSuccess("");
+      setShapeError(error?.message || "Failed to download selected shapefile.");
+      setPolygonPath([]);
+      setPolygonGridPoints([]);
+      setHoveredShapeCoordinateKey("");
+    } finally {
+      setIsShapeSelectionLoading(false);
     }
   }
 
@@ -516,8 +582,9 @@ function App() {
           </div>
         </div>
         <div className="header-actions-modern">
-          <div className="research-group-name">
-            <span>Hydrology & Climate Research Group</span>
+          <div className="research-group-name" style={{ display: "flex", alignItems: "center", gap: "0.5em" }}>
+            <img src={groupLogo} alt="Research Group Logo" className="group-logo-img" style={{height: "100px", width: "auto"}} />
+            <span>Hydraulic Modeling Lab</span>
           </div>
           <button
             type="button"
@@ -592,6 +659,23 @@ function App() {
               {coordinateTab === "polygon" && (
                 <>
                   <label>
+                    🧭 Shapefile Source
+                    <select
+                      value={shapeSource}
+                      onChange={(event) => {
+                        const nextSource = event.target.value;
+                        setShapeSource(nextSource);
+                        setShapeError("");
+                        setShapeSuccess("");
+                      }}
+                    >
+                      <option value="upload">Upload ZIP</option>
+                      <option value="server">Select from server</option>
+                    </select>
+                  </label>
+
+                  {shapeSource === "upload" ? (
+                  <label>
                     🗂️ Upload Polygon Shapefile (.zip)
                     <input
                       type="file"
@@ -599,6 +683,32 @@ function App() {
                       onChange={(event) => handleShapeZipUpload(event.target.files?.[0])}
                     />
                   </label>
+                  ) : (
+                    <label>
+                      📂 Select Available Shapefile
+                      <select
+                        value={selectedShapeFile}
+                        onChange={(event) => handleServerShapeSelect(event.target.value)}
+                        disabled={isShapeListLoading || isShapeSelectionLoading}
+                      >
+                        <option value="">
+                          {isShapeListLoading ? "Loading shapefiles..." : "Select shapefile"}
+                        </option>
+                        {availableShapes.map((shape) => (
+                          <option key={shape.file_name} value={shape.file_name}>
+                            {shape.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  {shapeSource === "server" && !isShapeListLoading && !availableShapes.length && (
+                    <p className="helper-text error">⚠️ No shapefiles are currently available on server.</p>
+                  )}
+                  {shapeSource === "server" && isShapeSelectionLoading && (
+                    <p className="helper-text">⏳ Preparing selected shapefile...</p>
+                  )}
 
                   {shapeSuccess && <p className="helper-text success">✅ {shapeSuccess}</p>}
                   {shapeError && <p className="helper-text error">⚠️ {shapeError}</p>}

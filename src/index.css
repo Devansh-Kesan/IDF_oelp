@@ -127,14 +127,9 @@ body::before {
 }
 
 .research-group-name {
-  background: var(--pill-bg);
   color: var(--accent);
   font-weight: 800;
-  font-size: 1.25rem;
-  padding: 0.6rem 1.5rem;
-  border-radius: 999px;
-  box-shadow: 0 2px 12px 0 rgba(131,56,236,0.08);
-  border: 1.5px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  font-size: 1.7rem;
   letter-spacing: 0.04em;
   display: flex;
   align-items: center;
