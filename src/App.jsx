@@ -506,6 +506,7 @@ function App() {
 
   return (
     <div className="app-shell">
+
       <header className="creative-header">
         <div className="header-brand">
           <img src={iitPalakkadLogo} alt="IIT Palakkad logo" className="iit-logo" />
@@ -514,7 +515,10 @@ function App() {
             <h1 className="header-title">IDF Curve Analysis Tool</h1>
           </div>
         </div>
-        <div className="header-actions">
+        <div className="header-actions-modern">
+          <div className="research-group-name">
+            <span>Hydrology & Climate Research Group</span>
+          </div>
           <button
             type="button"
             className="theme-toggle"
