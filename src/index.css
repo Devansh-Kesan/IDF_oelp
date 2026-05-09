@@ -1085,3 +1085,18 @@ select option {
     padding: 1.2rem;
   }
 }
+
+
+/* Hide the research group logo and text on smaller screens to prevent header collision */
+@media (max-width: 1350px) {
+  .research-group-name {
+    display: none !important;
+  }
+}
+
+@media (max-width: 960px) {
+  /* Hides the text in the theme toggle button */
+  .hide-on-mobile {
+    display: none;
+  }
+}

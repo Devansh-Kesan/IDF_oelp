@@ -54,7 +54,9 @@ export default function IdfChartPanel({
       title: {
         text: title,
         x: 0.01,
+        y: 0.99, // Push title to the very top
         xanchor: "left",
+        yanchor: "top",
         font: { size: 16, color: isLightMode ? "#0f172a" : "#f8fafc" }
       },
       xaxis: {
@@ -72,8 +74,9 @@ export default function IdfChartPanel({
       },
       legend: {
         orientation: "h",
-        y: 1.15,
+        y: 1.12,
         x: 0,
+        yanchor: "bottom", // Prevents the legend from expanding downwards into the title
         font: { color: axisColor },
         bgcolor: legendBackground,
         bordercolor: isLightMode ? "rgba(14, 116, 144, 0.25)" : "rgba(148, 163, 184, 0.25)",
@@ -84,9 +87,9 @@ export default function IdfChartPanel({
         font: { color: isLightMode ? "#0f172a" : "#f8fafc" },
         bordercolor: isLightMode ? "rgba(14,116,144,0.3)" : "rgba(148,163,184,0.35)"
       },
-      paper_bgcolor: "rgba(0,0,0,0)",
-      plot_bgcolor: "rgba(0,0,0,0)",
-      margin: { l: 70, r: 24, t: 70, b: 62 },
+      paper_bgcolor: isLightMode ? "#ffffff" : "#0f172a",
+      plot_bgcolor: isLightMode ? "#ffffff" : "#0f172a",
+      margin: { l: 70, r: 24, t: 110, b: 62 },
       hovermode: "closest"
     });
   const rainfallPlotData = useMemo(() => {
@@ -224,7 +227,9 @@ export default function IdfChartPanel({
       title: {
         text: "IDF Curve by Return Period",
         x: 0.01,
+        y: 0.99, // Push title to the very top
         xanchor: "left",
+        yanchor: "top",
         font: { size: 16, color: isLightMode ? "#0f172a" : "#f8fafc" }
       },
       xaxis: {
@@ -242,8 +247,9 @@ export default function IdfChartPanel({
       },
       legend: {
         orientation: "h",
-        y: 1.15,
+        y: 1.12,
         x: 0,
+        yanchor: "bottom", // Prevents the legend from expanding downwards into the title
         font: { color: axisColor },
         bgcolor: legendBackground,
         bordercolor: isLightMode ? "rgba(14, 116, 144, 0.25)" : "rgba(148, 163, 184, 0.25)",
@@ -254,9 +260,9 @@ export default function IdfChartPanel({
         font: { color: isLightMode ? "#0f172a" : "#f8fafc" },
         bordercolor: isLightMode ? "rgba(14,116,144,0.3)" : "rgba(148,163,184,0.35)"
       },
-      paper_bgcolor: "rgba(0,0,0,0)",
-      plot_bgcolor: "rgba(0,0,0,0)",
-      margin: { l: 70, r: 24, t: 70, b: 62 },
+      paper_bgcolor: isLightMode ? "#ffffff" : "#0f172a",
+      plot_bgcolor: isLightMode ? "#ffffff" : "#0f172a",
+      margin: { l: 70, r: 24, t: 90, b: 62 },
       hovermode: "closest"
     }),
     [axisColor, gridColor, isLightMode, legendBackground]
@@ -283,13 +289,42 @@ export default function IdfChartPanel({
       return "";
     }
 
-    const header = ["date", "observed_imd", "model", "bias_corrected"];
-    const rows = rainfallData.map((row) => [
-      row.time ?? "",
-      row.obs ?? "",
-      row.model ?? "",
-      row.corrected ?? ""
-    ]);
+    const modelName = idfData?.metadata?.model || 'model'
+    const scenarioName = idfData?.metadata?.scenario || 'historical';
+    let header = []
+    let rows = []
+
+    if (modelName === "imd") {
+      header = ["date", "observed_imd"];
+      rows = rainfallData.map((row) => [row.time ?? "", row.obs ?? ""]);
+    } else if (modelName === "imdaa") {
+      header = ["date", "observed_imdaa"];
+      rows = rainfallData.map((row) => [row.time ?? "", row.obs ?? ""]);
+    } else {
+      // Format column names based on model and scenario
+      const modelColName = `${modelName}_${scenarioName}`;
+      const correctedColName = `${modelName}_${scenarioName}_bias_corrected`;
+
+      if (scenarioName === "historical") {
+        // Include observed data only if the scenario is historical
+        header = ["date", "observed_imdaa", modelColName, correctedColName];
+        rows = rainfallData.map((row) => [
+          row.time ?? "",
+          row.obs ?? "",
+          row.model ?? "",
+          row.corrected ?? ""
+        ]);
+      } else {
+        // Exclude observed data for future scenarios
+        header = ["date", modelColName, correctedColName];
+        rows = rainfallData.map((row) => [
+          row.time ?? "",
+          row.model ?? "",
+          row.corrected ?? ""
+        ]);
+      }
+    }
+
     return [header, ...rows].map((parts) => parts.join(",")).join("\n");
   }, [hasRainfallData, rainfallData]);
 
@@ -493,7 +528,7 @@ export default function IdfChartPanel({
         {isShapeMode ? (
           <>
             <button type="button" className="result-pill active">
-              📋 Shape Table View
+              📋 Table View
             </button>
             <button
               type="button"
@@ -501,7 +536,7 @@ export default function IdfChartPanel({
               onClick={onDownloadShapeData}
               disabled={isShapeDownloadLoading || !shapeCoordinateKeys.length}
             >
-              {isShapeDownloadLoading ? "⏳ Downloading..." : "⬇ Download Shape Data"}
+              {isShapeDownloadLoading ? "⏳ Downloading..." : "⬇ Download Rainfall Data"}
             </button>
             <button
               type="button"
@@ -509,7 +544,7 @@ export default function IdfChartPanel({
               onClick={handleDownloadShapeIdfTableCsv}
               disabled={!shapeIdfTableCsv}
             >
-              ⬇ Download IDF Table CSV
+              ⬇ Download IDF Table
             </button>
           </>
         ) : (
@@ -537,12 +572,12 @@ export default function IdfChartPanel({
             </button>
             {activeView === "rainfall" && hasRainfallData ? (
               <button type="button" className="download-btn" onClick={handleDownloadRainfallCsv}>
-                ⬇ Download CSV
+                ⬇ Download Rainfall Data
               </button>
             ) : null}
             {hasData ? (
               <button type="button" className="download-btn" onClick={handleDownloadIdfTableCsv}>
-                ⬇ Download IDF Table CSV
+                ⬇ Download IDF Table
               </button>
             ) : null}
           </>
@@ -618,7 +653,14 @@ export default function IdfChartPanel({
               responsive: true,
               displaylogo: false,
               scrollZoom: true,
-              modeBarButtonsToRemove: ["lasso2d", "select2d"]
+              modeBarButtonsToRemove: ["lasso2d", "select2d"],
+              toImageButtonOptions: {
+                format: 'png',
+                filename: 'idf_chart_export',
+                height: 800,
+                width: 1200,
+                scale: 2 // scales up resolution for high-quality export
+              }
             }}
             style={{ width: "100%", height: "100%" }}
             useResizeHandler
@@ -659,7 +701,14 @@ export default function IdfChartPanel({
                     responsive: true,
                     displaylogo: false,
                     scrollZoom: true,
-                    modeBarButtonsToRemove: ["lasso2d", "select2d"]
+                    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+                    toImageButtonOptions: {
+                      format: 'png',
+                      filename: 'idf_chart_export',
+                      height: 800,
+                      width: 1200,
+                      scale: 2 // scales up resolution for high-quality export
+                    }
                   }}
                   style={{ width: "100%", height: "100%" }}
                   useResizeHandler
@@ -673,7 +722,14 @@ export default function IdfChartPanel({
                     responsive: true,
                     displaylogo: false,
                     scrollZoom: true,
-                    modeBarButtonsToRemove: ["lasso2d", "select2d"]
+                    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+                    toImageButtonOptions: {
+                      format: 'png',
+                      filename: 'idf_chart_export',
+                      height: 800,
+                      width: 1200,
+                      scale: 2 // scales up resolution for high-quality export
+                    }
                   }}
                   style={{ width: "100%", height: "100%" }}
                   useResizeHandler
@@ -688,7 +744,14 @@ export default function IdfChartPanel({
                 responsive: true,
                 displaylogo: false,
                 scrollZoom: true,
-                modeBarButtonsToRemove: ["lasso2d", "select2d"]
+                modeBarButtonsToRemove: ["lasso2d", "select2d"],
+                toImageButtonOptions: {
+                  format: 'png',
+                  filename: 'idf_chart_export',
+                  height: 800,
+                  width: 1200,
+                  scale: 2 // scales up resolution for high-quality export
+                }
               }}
               style={{ width: "100%", height: "100%" }}
               useResizeHandler
@@ -730,7 +793,14 @@ export default function IdfChartPanel({
                       responsive: true,
                       displaylogo: false,
                       scrollZoom: true,
-                      modeBarButtonsToRemove: ["lasso2d", "select2d"]
+                      modeBarButtonsToRemove: ["lasso2d", "select2d"],
+                      toImageButtonOptions: {
+                        format: 'png',
+                        filename: 'idf_chart_export',
+                        height: 800,
+                        width: 1200,
+                        scale: 2 // scales up resolution for high-quality export
+                      }
                     }}
                     style={{ width: "100%", height: "100%" }}
                     useResizeHandler
